@@ -8,17 +8,22 @@ from shared import (
 
 def check_deepseek(query):
     print(f"  [DEBUG] Sending query to DeepSeek: {query[:80]}...")
-    print(f"  [DEBUG] DEEPSEEK_KEY starts with: {DEEPSEEK_KEY[:5]}... (length {len(DEEPSEEK_KEY)})")
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
         "Content-Type": "application/json"
     }
+    # Изменённый промпт: просим просто найти новость и кратко ответить, начиная с ДА/НЕТ
+    prompt = (
+        f"Найди в интернете актуальную информацию по запросу: {query}\n\n"
+        "Если есть официальное подтверждение или новость, напиши 'ДА: ' и кратко опиши суть (1-2 предложения). "
+        "Если ничего нет, напиши просто 'НЕТ'."
+    )
     payload = {
         "model": "deepseek-chat",
-        "messages": [{"role": "user", "content": f"Проверь новости по запросу: {query}\nЕсли есть официальное подтверждение, ответь 'ДА: <суть>'. Иначе 'НЕТ'."}],
+        "messages": [{"role": "user", "content": prompt}],
         "search": True,
-        "temperature": 0.1,
-        "max_tokens": 200
+        "temperature": 0.3,
+        "max_tokens": 400
     }
     try:
         resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=25)
