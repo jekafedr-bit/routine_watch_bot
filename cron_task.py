@@ -6,6 +6,11 @@ from shared import (
     get_all_task_ids, get_task_info, update_last_run
 )
 
+import datetime
+from datetime import timedelta
+import requests
+from shared import DEEPSEEK_KEY
+
 def check_deepseek(query):
     print(f"  [DEBUG] Using Responses API with web_search for query: {query[:80]}...")
     headers = {
@@ -15,7 +20,10 @@ def check_deepseek(query):
     today = datetime.date.today().strftime("%d.%m.%Y")
     payload = {
         "model": "deepseek-chat",
-        "input": f"Сегодня {today}. Найди самую свежую новость за последние сутки по запросу: {query}. Ответь строго в формате: если есть официальное подтверждение — 'ДА: <суть>', если нет — 'НЕТ'.",
+        "input": (
+            f"Сегодня {today}. Найди самую свежую новость за последние сутки по запросу: {query}. "
+            "Ответь строго в формате: если есть официальное подтверждение — 'ДА: <суть>', если нет — 'НЕТ'."
+        ),
         "tools": [{"type": "web_search"}],
         "temperature": 0.3,
         "max_output_tokens": 600
@@ -30,18 +38,26 @@ def check_deepseek(query):
         print(f"  [DEBUG] Status: {resp.status_code}")
         if resp.status_code == 200:
             data = resp.json()
-            # Ищем финальный ответ среди output
             answer = ""
             for item in data.get("output", []):
                 if item.get("type") == "message":
                     answer = item.get("content", [{}])[0].get("text", "").strip()
                     break
-            if not answer:
-                answer = "НЕТ"
-            print(f"  [DEBUG] Final answer: {answer}")
-            if answer.startswith("ДА"):
-                news = answer.split(":", 1)[1].strip() if ":" in answer else "Нашлась новость"
+            print(f"  [DEBUG] Full answer: {answer}")
+
+            # Гибкий поиск "ДА:" в любом месте ответа
+            if "ДА:" in answer:
+                # Всё после первого "ДА:"
+                news_start = answer.find("ДА:") + 3
+                news = answer[news_start:].strip().split("\n")[0]  # первая строка
                 return True, news
+            elif answer.startswith("ДА"):
+                # Если ответ начинается с "ДА" без двоеточия
+                news = answer[2:].strip().lstrip(": ").strip()
+                return True, news
+            else:
+                # Если формат неизвестен, но ответ не пустой, считаем что новости нет
+                return False, None
         else:
             print(f"  [DEBUG] Error body: {resp.text}")
     except Exception as e:
