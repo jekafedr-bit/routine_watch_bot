@@ -26,11 +26,6 @@ TASK_PREFIX = "task:"
 TASK_ID_COUNTER = "task_id_counter"
 USER_TASKS_PREFIX = "user_tasks:"      # множество task_id для каждого пользователя
 
-# ---------- Проверка доступа ----------
-def is_allowed(chat_id):
-    """Возвращает True, если пользователь с chat_id имеет доступ к боту."""
-    return chat_id in ALLOWED_USERS
-
 # ---------- Telegram ----------
 def send_telegram(chat_id, text, parse_mode="HTML"):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"

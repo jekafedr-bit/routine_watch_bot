@@ -9,7 +9,10 @@ from shared import (
     parse_duration, migrate_legacy_tasks,
     update_last_run, check_deepseek   # <-- новые
 )
-
+from user_management import (
+    is_allowed, notify_admin_unauthorized,
+    add_dynamic_user, remove_dynamic_user
+)
 app = Flask(__name__)
 
 # ---------- Обработка команд ----------
@@ -152,6 +155,37 @@ def handle_message(msg):
             return
         set_task_paused(tid, False)
         send_telegram(chat_id, f"▶ Задача #{tid} возобновлена.")
+
+    elif text.startswith("/adduser") and chat_id == ADMIN_CHAT_ID:
+        parts = text.split()
+        if len(parts) < 2:
+            send_telegram(chat_id, "Укажите chat_id пользователя, например /adduser 123456789")
+            return
+        try:
+            new_user_id = int(parts[1])
+        except ValueError:
+            send_telegram(chat_id, "Неверный формат ID.")
+            return
+        add_dynamic_user(new_user_id)
+        send_telegram(chat_id, f"✅ Пользователь {new_user_id} добавлен в динамический доступ.")
+        # Уведомим самого пользователя, если бот может ему написать (необязательно)
+        try:
+            send_telegram(new_user_id, "✅ Администратор предоставил вам доступ к боту. Можете начинать работу.")
+        except:
+            pass
+
+    elif text.startswith("/removeuser") and chat_id == ADMIN_CHAT_ID:
+        parts = text.split()
+        if len(parts) < 2:
+            send_telegram(chat_id, "Укажите chat_id пользователя, например /removeuser 123456789")
+            return
+        try:
+            user_id = int(parts[1])
+        except ValueError:
+            send_telegram(chat_id, "Неверный формат ID.")
+            return
+        remove_dynamic_user(user_id)
+        send_telegram(chat_id, f"✅ Пользователь {user_id} удалён из динамического доступа.")
 
 # ---------- Вебхук ----------
 @app.route("/webhook", methods=["POST"])
