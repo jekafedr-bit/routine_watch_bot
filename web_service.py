@@ -8,7 +8,7 @@ from shared import (
     get_user_task_ids, get_task_info, set_task_paused,
     parse_duration, migrate_legacy_tasks,
     update_last_run, check_deepseek, pause_user_tasks,
-    get_donation_message
+    get_donation_message, reset_unauthorized_notify
 )
 from user_management import (
     is_allowed, notify_admin_unauthorized,
@@ -218,6 +218,7 @@ def handle_message(msg):
             return
         remove_dynamic_user(user_id)
         pause_user_tasks(user_id)
+        reset_unauthorized_notify(user_id)
         send_telegram(chat_id, f"✅ Пользователь {user_id} удалён из доступа, все его задачи остановлены.")
 
 # ---------- Вебхук ----------

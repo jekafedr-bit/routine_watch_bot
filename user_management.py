@@ -64,3 +64,8 @@ def notify_admin_unauthorized(chat_id, user_info):
     )
     send_telegram(ADMIN_CHAT_ID, msg_text)
     r.setex(notify_key, 3600, "1")
+
+def reset_unauthorized_notify(chat_id):
+    """Удаляет ключ блокировки уведомлений, чтобы пользователь снова мог запросить доступ."""
+    notify_key = f"{UNAUTHORIZED_NOTIFY_PREFIX}{chat_id}"
+    r.delete(notify_key)
