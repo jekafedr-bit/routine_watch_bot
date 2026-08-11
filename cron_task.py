@@ -7,6 +7,7 @@ from shared import (
 )
 
 def check_deepseek(query):
+    print(f"  [DEBUG] Sending query to DeepSeek: {query[:80]}...")
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
         "Content-Type": "application/json"
@@ -20,14 +21,18 @@ def check_deepseek(query):
     }
     try:
         resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=25)
+        print(f"  [DEBUG] DeepSeek response status: {resp.status_code}")
         if resp.status_code == 200:
             data = resp.json()
             answer = data["choices"][0]["message"]["content"].strip()
+            print(f"  [DEBUG] DeepSeek answer: {answer}")
             if answer.startswith("ДА"):
                 news = answer.split(":", 1)[1].strip() if ":" in answer else "Нашлась новость"
                 return True, news
+        else:
+            print(f"  [DEBUG] DeepSeek error body: {resp.text}")
     except Exception as e:
-        print(f"DeepSeek error: {e}")
+        print(f"  [DEBUG] DeepSeek exception: {e}")
     return False, None
 
 def process_due_tasks():
