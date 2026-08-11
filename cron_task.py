@@ -3,7 +3,7 @@ from datetime import timedelta
 import requests
 from shared import (
     TOKEN, ADMIN_CHAT_ID, DEEPSEEK_KEY, send_telegram,
-    get_all_task_ids, get_task_info, update_last_run
+    get_all_task_ids, get_task_info, update_last_run, shared
 )
 
 import datetime
@@ -85,7 +85,9 @@ def process_due_tasks():
             print(f"Checking task {tid}")
             found, news = check_deepseek(info["query"])
             if found:
-                send_telegram(ADMIN_CHAT_ID, f"🔔 <b>Новость по задаче #{tid}</b>\n{news}")
+                send_telegram(ADMIN_CHAT_ID,
+                              f"🔔 <b>Новость по задаче #{tid}</b>\n{news}\n\n⏸ Задача #{tid} автоматически поставлена на паузу.")
+                set_task_paused(tid, True)
             update_last_run(tid, now_iso)
 
 if __name__ == "__main__":
