@@ -87,7 +87,7 @@ def handle_message(msg):
             return
         task_id = get_next_task_id()
         save_task(task_id, query, interval, chat_id)
-        send_telegram(chat_id, f"✅ Задача #{task_id} создана.\nЗапрос: {query}\nИнтервал: {interval} мин.")
+
         # Немедленная проверка
         found, news = check_deepseek(query)
         now_iso = datetime.datetime.now(datetime.UTC).isoformat()
@@ -96,7 +96,13 @@ def handle_message(msg):
             send_telegram(chat_id,
                           f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}")
             set_task_paused(task_id, True)
+        else:
+            # Ничего не найдено — сообщаем и говорим о повторной проверке
+            send_telegram(chat_id,
+                          f"✅ Задача #{task_id} создана.\nЗапрос: {query}\nИнтервал: {interval} мин.\n\n"
+                          f"🔍 Сейчас по запросу ничего не найдено. Я продолжу проверять каждые {interval} мин. и пришлю уведомление, когда появится новость.")
         update_last_run(task_id, now_iso)
+
         # Уведомление админу, если задачу создал не он сам
         if chat_id != ADMIN_CHAT_ID:
             user = msg.get("from", {})
