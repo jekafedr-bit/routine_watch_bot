@@ -184,7 +184,7 @@ def get_donation_message():
     donation_text = os.environ.get("DONATION_TEXT", "").strip()
     if not donation_text:
         donation_text = (
-            "отправьте любую сумму в @wallet на никнейм @ekfedorov.\n"
+            "Oтправьте любую сумму в @wallet на никнейм @ekfedorov.\n"
             "Как это сделать: откройте @wallet → «Отправить» → "
             "в поле «Получатель» введите @ekfedorov → укажите сумму и подтвердите."
         )
