@@ -8,6 +8,7 @@ from shared import (
 
 def check_deepseek(query):
     print(f"  [DEBUG] Sending query to DeepSeek: {query[:80]}...")
+    print(f"  [DEBUG] DEEPSEEK_KEY starts with: {DEEPSEEK_KEY[:5]}... (length {len(DEEPSEEK_KEY)})")
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
         "Content-Type": "application/json"
