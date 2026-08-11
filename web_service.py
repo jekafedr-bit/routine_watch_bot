@@ -8,11 +8,12 @@ from shared import (
     get_user_task_ids, get_task_info, set_task_paused,
     parse_duration, migrate_legacy_tasks,
     update_last_run, check_deepseek, pause_user_tasks,
-    get_donation_message, reset_unauthorized_notify
+    get_donation_message
 )
 from user_management import (
     is_allowed, notify_admin_unauthorized,
-    add_dynamic_user, remove_dynamic_user
+    add_dynamic_user, remove_dynamic_user,
+    reset_unauthorized_notify
 )
 app = Flask(__name__)
 
