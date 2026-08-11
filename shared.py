@@ -177,3 +177,12 @@ def check_deepseek(query):
     except Exception as e:
         print(f"  [DEBUG] Exception: {e}")
     return False, None
+
+    # ---------- Донаты ----------
+    def get_donation_message():
+        """Возвращает сообщение с инструкцией по донатам, если переменная окружения задана."""
+        donation_text = os.environ.get("DONATION_TEXT", "").strip()
+        if donation_text:
+            return f"\n\n❤️ <b>Поддержите проект!</b>\n{donation_text}"
+        return ("❤️ Поддержите проект — отправьте любую сумму в @wallet на никнейм @ekfedorov."
+                "Как это сделать: откройте @wallet → «Отправить» → в поле «Получатель» введите @ekfedorov → укажите сумму и подтвердите.")

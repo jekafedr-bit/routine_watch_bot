@@ -7,7 +7,8 @@ from shared import (
     get_next_task_id, save_task, delete_task,
     get_user_task_ids, get_task_info, set_task_paused,
     parse_duration, migrate_legacy_tasks,
-    update_last_run, check_deepseek, pause_user_tasks
+    update_last_run, check_deepseek, pause_user_tasks,
+    get_donation_message
 )
 from user_management import (
     is_allowed, notify_admin_unauthorized,
@@ -82,8 +83,9 @@ def handle_message(msg):
         found, news = check_deepseek(query)
         now_iso = datetime.datetime.now(datetime.UTC).isoformat()
         if found:
+            don_msg = get_donation_message()
             send_telegram(chat_id,
-                          f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.")
+                          f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}")
             set_task_paused(task_id, True)
         update_last_run(task_id, now_iso)
         # Уведомление админу, если задачу создал не он сам

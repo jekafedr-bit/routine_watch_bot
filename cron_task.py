@@ -4,7 +4,7 @@ import requests
 from shared import (
     TOKEN, ADMIN_CHAT_ID, DEEPSEEK_KEY, send_telegram,
     get_task_info, update_last_run, set_task_paused,
-    get_all_task_ids, check_deepseek
+    get_all_task_ids, check_deepseek, get_donation_message
 )
 
 def process_due_tasks():
@@ -30,8 +30,9 @@ def process_due_tasks():
             found, news = check_deepseek(info["query"])
             owner_chat_id = int(info.get("chat_id", ADMIN_CHAT_ID))
             if found:
+                don_msg = get_donation_message()
                 send_telegram(owner_chat_id,
-                    f"🔔 <b>Новость по задаче #{tid}</b>\n{news}\n\n⏸ Задача #{tid} автоматически поставлена на паузу.")
+                              f"🔔 <b>Новость по задаче #{tid}</b>\n{news}\n\n⏸ Задача #{tid} автоматически поставлена на паузу.{don_msg}")
                 set_task_paused(tid, True)
             update_last_run(tid, now_iso)
 
