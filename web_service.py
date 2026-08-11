@@ -28,15 +28,30 @@ def handle_message(msg):
         return
 
     if text.startswith("/start"):
-        send_telegram(chat_id, (
-            "🤖 Бот для отслеживания новостей.\n\n"
-            "Команды:\n"
-            "/newtask &lt;запрос&gt; /every &lt;интервал&gt; — создать задачу\n"
-            "/tasks — список ваших задач\n"
-            "/taskinfo &lt;ID&gt; — инфо о задаче\n"
-            "/deletetask &lt;ID&gt; — удалить\n"
-            "/pause &lt;ID&gt; /resume &lt;ID&gt; — пауза/продолжить"
-        ), parse_mode="HTML")
+        if chat_id == ADMIN_CHAT_ID:
+            send_telegram(chat_id, (
+                "🤖 <b>Бот для отслеживания новостей</b>\n\n"
+                "<b>Команды администратора:</b>\n"
+                "/newtask &lt;запрос&gt; /every &lt;интервал&gt; — создать задачу\n"
+                "/tasks — список ваших задач\n"
+                "/taskinfo &lt;ID&gt; — инфо о любой задаче\n"
+                "/deletetask &lt;ID&gt; — удалить свою задачу\n"
+                "/pause &lt;ID&gt; /resume &lt;ID&gt; — пауза/продолжить\n"
+                "/adduser &lt;chat_id&gt; — дать доступ пользователю\n"
+                "/removeuser &lt;chat_id&gt; — отозвать доступ (все задачи пользователя встанут на паузу)\n\n"
+                "🔔 При попытке неавторизованного доступа вы получите уведомление."
+            ), parse_mode="HTML")
+        else:
+            send_telegram(chat_id, (
+                "🤖 <b>Бот для отслеживания новостей</b>\n\n"
+                "<b>Доступные команды:</b>\n"
+                "/newtask &lt;запрос&gt; /every &lt;интервал&gt; — создать задачу\n"
+                "/tasks — список ваших задач\n"
+                "/taskinfo &lt;ID&gt; — инфо о задаче\n"
+                "/deletetask &lt;ID&gt; — удалить задачу\n"
+                "/pause &lt;ID&gt; /resume &lt;ID&gt; — пауза/продолжить"
+            ), parse_mode="HTML")
+        return
 
     elif text.startswith("/newtask"):
         parts = text.split("/every")
