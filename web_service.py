@@ -33,12 +33,13 @@ def handle_message(msg):
                 "🤖 <b>Бот для отслеживания новостей</b>\n\n"
                 "<b>Команды администратора:</b>\n"
                 "/newtask &lt;запрос&gt; /every &lt;интервал&gt; — создать задачу\n"
+                "   Пример: /newtask билеты в Японию /every 1 day\n"
                 "/tasks — список ваших задач\n"
                 "/taskinfo &lt;ID&gt; — инфо о любой задаче\n"
                 "/deletetask &lt;ID&gt; — удалить свою задачу\n"
                 "/pause &lt;ID&gt; /resume &lt;ID&gt; — пауза/продолжить\n"
                 "/adduser &lt;chat_id&gt; — дать доступ пользователю\n"
-                "/removeuser &lt;chat_id&gt; — отозвать доступ (все задачи пользователя встанут на паузу)\n\n"
+                "/removeuser &lt;chat_id&gt; — отозвать доступ (задачи пользователя встанут на паузу)\n\n"
                 "🔔 При попытке неавторизованного доступа вы получите уведомление."
             ), parse_mode="HTML")
         else:
@@ -46,6 +47,7 @@ def handle_message(msg):
                 "🤖 <b>Бот для отслеживания новостей</b>\n\n"
                 "<b>Доступные команды:</b>\n"
                 "/newtask &lt;запрос&gt; /every &lt;интервал&gt; — создать задачу\n"
+                "   Пример: /newtask билеты в Японию /every 1 day\n"
                 "/tasks — список ваших задач\n"
                 "/taskinfo &lt;ID&gt; — инфо о задаче\n"
                 "/deletetask &lt;ID&gt; — удалить задачу\n"
@@ -54,28 +56,31 @@ def handle_message(msg):
         return
 
     elif text.startswith("/newtask"):
-        parts = text.split("/every")
-        if len(parts) < 2:
-            send_telegram(chat_id, "❗ Формат: /newtask <запрос> /every <интервал>")
+        # Разделяем команду и интервал
+        if "/every" not in text:
+            send_telegram(chat_id,
+                "❗ Укажите интервал проверки с помощью /every.\n"
+                "Пример: /newtask снижение цен на билеты /every 1 day")
             return
+        parts = text.split("/every", 1)
         query = parts[0].replace("/newtask", "", 1).strip()
         if not query:
-            send_telegram(chat_id, "❗ Укажи запрос.")
+            send_telegram(chat_id, "❗ Укажите запрос для отслеживания.")
             return
         dur_str = parts[1].strip()
         interval = parse_duration(dur_str)
         if interval is None:
-            send_telegram(chat_id, "❗ Не понял интервал. Используй: 5 minutes, 1 hour, daily")
+            send_telegram(chat_id, "❗ Не понял интервал. Используйте: 5 minutes, 1 hour, daily")
             return
         if interval < 5:
             send_telegram(chat_id, "❗ Минимальный интервал — 5 минут.")
             return
         task_id = get_next_task_id()
-        save_task(task_id, query, interval, chat_id)   # передаём chat_id
+        save_task(task_id, query, interval, chat_id)
         send_telegram(chat_id, f"✅ Задача #{task_id} создана.\nЗапрос: {query}\nИнтервал: {interval} мин.")
         # Немедленная проверка
         found, news = check_deepseek(query)
-        now_iso = datetime.datetime.now(datetime.UTC).isoformat()  # понадобится import datetime
+        now_iso = datetime.datetime.now(datetime.UTC).isoformat()
         if found:
             send_telegram(chat_id,
                           f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.")
