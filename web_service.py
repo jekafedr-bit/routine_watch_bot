@@ -2,9 +2,9 @@ import os
 import requests
 from flask import Flask, request
 from shared import (
-    TOKEN, ADMIN_CHAT_ID, send_telegram,
+    TOKEN, ADMIN_CHAT_ID, send_telegram, is_allowed,
     get_next_task_id, save_task, delete_task,
-    get_all_task_ids, get_task_info, set_task_paused,
+    get_user_task_ids, get_task_info, set_task_paused,
     parse_duration
 )
 
@@ -14,8 +14,10 @@ app = Flask(__name__)
 def handle_message(msg):
     chat_id = msg["chat"]["id"]
     text = msg.get("text", "").strip()
-    if chat_id != ADMIN_CHAT_ID:
-        send_telegram(chat_id, "Я работаю только с хозяином.")
+
+    # Проверка доступа
+    if not is_allowed(chat_id):
+        send_telegram(chat_id, "У вас нет доступа к этому боту.")
         return
 
     if text.startswith("/start"):
@@ -23,7 +25,7 @@ def handle_message(msg):
             "🤖 Бот для отслеживания новостей.\n\n"
             "Команды:\n"
             "/newtask &lt;запрос&gt; /every &lt;интервал&gt; — создать задачу\n"
-            "/tasks — список задач\n"
+            "/tasks — список ваших задач\n"
             "/taskinfo &lt;ID&gt; — инфо о задаче\n"
             "/deletetask &lt;ID&gt; — удалить\n"
             "/pause &lt;ID&gt; /resume &lt;ID&gt; — пауза/продолжить"
@@ -47,15 +49,15 @@ def handle_message(msg):
             send_telegram(chat_id, "❗ Минимальный интервал — 5 минут.")
             return
         task_id = get_next_task_id()
-        save_task(task_id, query, interval)
+        save_task(task_id, query, interval, chat_id)   # передаём chat_id
         send_telegram(chat_id, f"✅ Задача #{task_id} создана.\nЗапрос: {query}\nИнтервал: {interval} мин.")
 
     elif text.startswith("/tasks"):
-        ids = get_all_task_ids()
+        ids = get_user_task_ids(chat_id)   # только задачи пользователя
         if not ids:
-            send_telegram(chat_id, "Нет задач.")
+            send_telegram(chat_id, "У вас нет задач.")
             return
-        lines = ["<b>📋 Задачи:</b>"]
+        lines = ["<b>📋 Ваши задачи:</b>"]
         for tid in sorted(ids, key=lambda x: int(x)):
             info = get_task_info(tid)
             if not info:
@@ -76,6 +78,9 @@ def handle_message(msg):
         if not info:
             send_telegram(chat_id, "Задача не найдена.")
             return
+        if info.get("chat_id") != str(chat_id):   # проверка владельца
+            send_telegram(chat_id, "Это не ваша задача.")
+            return
         paused = "Да" if info.get("paused") == "1" else "Нет"
         send_telegram(chat_id,
             f"<b>Задача #{tid}</b>\n"
@@ -91,10 +96,14 @@ def handle_message(msg):
             send_telegram(chat_id, "Укажи ID.")
             return
         tid = parts[1]
-        if not get_task_info(tid):
+        info = get_task_info(tid)
+        if not info:
             send_telegram(chat_id, "Задача не найдена.")
             return
-        delete_task(tid)
+        if info.get("chat_id") != str(chat_id):
+            send_telegram(chat_id, "Это не ваша задача.")
+            return
+        delete_task(tid, chat_id)   # удаляем с привязкой к пользователю
         send_telegram(chat_id, f"🗑 Задача #{tid} удалена.")
 
     elif text.startswith("/pause"):
@@ -103,8 +112,9 @@ def handle_message(msg):
             send_telegram(chat_id, "Укажи ID.")
             return
         tid = parts[1]
-        if not get_task_info(tid):
-            send_telegram(chat_id, "Задача не найдена.")
+        info = get_task_info(tid)
+        if not info or info.get("chat_id") != str(chat_id):
+            send_telegram(chat_id, "Задача не найдена или не ваша.")
             return
         set_task_paused(tid, True)
         send_telegram(chat_id, f"⏸ Задача #{tid} на паузе.")
@@ -115,8 +125,9 @@ def handle_message(msg):
             send_telegram(chat_id, "Укажи ID.")
             return
         tid = parts[1]
-        if not get_task_info(tid):
-            send_telegram(chat_id, "Задача не найдена.")
+        info = get_task_info(tid)
+        if not info or info.get("chat_id") != str(chat_id):
+            send_telegram(chat_id, "Задача не найдена или не ваша.")
             return
         set_task_paused(tid, False)
         send_telegram(chat_id, f"▶ Задача #{tid} возобновлена.")

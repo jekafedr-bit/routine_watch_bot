@@ -3,14 +3,9 @@ from datetime import timedelta
 import requests
 from shared import (
     TOKEN, ADMIN_CHAT_ID, DEEPSEEK_KEY, send_telegram,
-    get_all_task_ids, get_task_info, update_last_run,
-    set_task_paused
+    get_task_info, update_last_run, set_task_paused,
+    get_all_task_ids   # используем глобальный список, потому что задачи могут быть от разных пользователей
 )
-
-import datetime
-from datetime import timedelta
-import requests
-from shared import DEEPSEEK_KEY
 
 def check_deepseek(query):
     print(f"  [DEBUG] Using Responses API with web_search for query: {query[:80]}...")
@@ -36,7 +31,6 @@ def check_deepseek(query):
             json=payload,
             timeout=30
         )
-        print(f"  [DEBUG] Status: {resp.status_code}")
         if resp.status_code == 200:
             data = resp.json()
             answer = ""
@@ -45,20 +39,13 @@ def check_deepseek(query):
                     answer = item.get("content", [{}])[0].get("text", "").strip()
                     break
             print(f"  [DEBUG] Full answer: {answer}")
-
-            # Гибкий поиск "ДА:" в любом месте ответа
             if "ДА:" in answer:
-                # Всё после первого "ДА:"
                 news_start = answer.find("ДА:") + 3
-                news = answer[news_start:].strip().split("\n")[0]  # первая строка
+                news = answer[news_start:].strip().split("\n")[0]
                 return True, news
             elif answer.startswith("ДА"):
-                # Если ответ начинается с "ДА" без двоеточия
                 news = answer[2:].strip().lstrip(": ").strip()
                 return True, news
-            else:
-                # Если формат неизвестен, но ответ не пустой, считаем что новости нет
-                return False, None
         else:
             print(f"  [DEBUG] Error body: {resp.text}")
     except Exception as e:
@@ -68,8 +55,9 @@ def check_deepseek(query):
 def process_due_tasks():
     now = datetime.datetime.now(datetime.UTC)
     now_iso = now.isoformat()
-    task_ids = get_all_task_ids()
-    for tid in task_ids:
+    # Получаем ВСЕ задачи (из общего набора, т.к. нам нужно проверить каждого пользователя)
+    all_task_ids = get_all_task_ids()   # эта функция осталась в shared (возвращает все ID из TASKS_SET)
+    for tid in all_task_ids:
         info = get_task_info(tid)
         if not info or info.get("paused") == "1":
             continue
@@ -85,9 +73,10 @@ def process_due_tasks():
         if (now - last_run).total_seconds() >= interval * 60:
             print(f"Checking task {tid}")
             found, news = check_deepseek(info["query"])
+            owner_chat_id = int(info.get("chat_id", ADMIN_CHAT_ID))
             if found:
-                send_telegram(ADMIN_CHAT_ID,
-                              f"🔔 <b>Новость по задаче #{tid}</b>\n{news}\n\n⏸ Задача #{tid} автоматически поставлена на паузу.")
+                send_telegram(owner_chat_id,
+                    f"🔔 <b>Новость по задаче #{tid}</b>\n{news}\n\n⏸ Задача #{tid} автоматически поставлена на паузу.")
                 set_task_paused(tid, True)
             update_last_run(tid, now_iso)
 

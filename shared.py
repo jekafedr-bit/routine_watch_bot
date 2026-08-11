@@ -9,12 +9,25 @@ REDIS_URL = os.environ["UPSTASH_REDIS_URL"]
 ADMIN_CHAT_ID = int(os.environ["ADMIN_CHAT_ID"])
 DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 
+# Список разрешённых пользователей (через запятую). Если пусто – только ADMIN_CHAT_ID
+allowed_raw = os.environ.get("ALLOWED_USERS", "")
+if allowed_raw:
+    ALLOWED_USERS = set(int(uid.strip()) for uid in allowed_raw.split(",") if uid.strip())
+else:
+    ALLOWED_USERS = {ADMIN_CHAT_ID}
+
 r = redis.from_url(REDIS_URL)
 
 # Ключи Redis
-TASKS_SET = "tasks"
+TASKS_SET = "tasks"                    # оставим для обратной совместимости (не обязательно)
 TASK_PREFIX = "task:"
 TASK_ID_COUNTER = "task_id_counter"
+USER_TASKS_PREFIX = "user_tasks:"      # множество task_id для каждого пользователя
+
+# ---------- Проверка доступа ----------
+def is_allowed(chat_id):
+    """Возвращает True, если пользователь с chat_id имеет доступ к боту."""
+    return chat_id in ALLOWED_USERS
 
 # ---------- Telegram ----------
 def send_telegram(chat_id, text, parse_mode="HTML"):
@@ -25,24 +38,29 @@ def send_telegram(chat_id, text, parse_mode="HTML"):
 def get_next_task_id():
     return r.incr(TASK_ID_COUNTER)
 
-def save_task(task_id, query, interval_min):
+def save_task(task_id, query, interval_min, chat_id):
     now = datetime.datetime.now(datetime.UTC).isoformat()
     r.hset(f"{TASK_PREFIX}{task_id}", mapping={
         "query": query,
         "interval": interval_min,
         "last_run": now,
         "paused": "0",
-        "created": now
+        "created": now,
+        "chat_id": str(chat_id)          # храним как строку
     })
-    r.sadd(TASKS_SET, task_id)
+    r.sadd(TASKS_SET, task_id)          # общий набор
+    r.sadd(f"{USER_TASKS_PREFIX}{chat_id}", task_id)   # набор пользователя
 
-def delete_task(task_id):
-    r.delete(f"{TASK_PREFIX}{task_id}")
+def delete_task(task_id, chat_id):
+    # Удаляем из общего и пользовательского наборов
     r.srem(TASKS_SET, task_id)
+    r.srem(f"{USER_TASKS_PREFIX}{chat_id}", task_id)
+    r.delete(f"{TASK_PREFIX}{task_id}")
 
-def get_all_task_ids():
-    raw_ids = r.smembers(TASKS_SET)
-    return [tid.decode() for tid in raw_ids]
+def get_user_task_ids(chat_id):
+    """Возвращает список task_id, принадлежащих пользователю."""
+    raw = r.smembers(f"{USER_TASKS_PREFIX}{chat_id}")
+    return [tid.decode() for tid in raw]
 
 def get_task_info(task_id):
     raw = r.hgetall(f"{TASK_PREFIX}{task_id}")
