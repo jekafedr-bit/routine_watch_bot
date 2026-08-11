@@ -86,12 +86,15 @@ def handle_message(msg):
         if not info:
             send_telegram(chat_id, "Задача не найдена.")
             return
-        if info.get("chat_id") != str(chat_id):   # проверка владельца
+        # Админ может смотреть любую задачу, остальные — только свои
+        if info.get("chat_id") != str(chat_id) and chat_id != ADMIN_CHAT_ID:
             send_telegram(chat_id, "Это не ваша задача.")
             return
         paused = "Да" if info.get("paused") == "1" else "Нет"
+        owner = info.get("chat_id", "неизвестно")
         send_telegram(chat_id,
             f"<b>Задача #{tid}</b>\n"
+            f"Владелец: {owner}\n"
             f"Запрос: {info['query']}\n"
             f"Интервал: {info['interval']} мин\n"
             f"Пауза: {paused}\n"
