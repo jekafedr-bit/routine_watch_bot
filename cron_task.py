@@ -3,7 +3,8 @@ from datetime import timedelta
 import requests
 from shared import (
     TOKEN, ADMIN_CHAT_ID, DEEPSEEK_KEY, send_telegram,
-    get_all_task_ids, get_task_info, update_last_run, shared
+    get_all_task_ids, get_task_info, update_last_run,
+    set_task_paused
 )
 
 import datetime
