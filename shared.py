@@ -121,3 +121,58 @@ def get_all_task_ids():
     """Возвращает список всех ID задач (глобально). Используется в cron_task.py."""
     raw = r.smembers(TASKS_SET)
     return [tid.decode() for tid in raw]
+
+def check_deepseek(query):
+    """Проверяет новость или факт через DeepSeek Responses API с web_search.
+       Возвращает (True, текст_новости) или (False, None)."""
+    print(f"  [DEBUG] Checking query: {query[:80]}...")
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_KEY}",
+        "Content-Type": "application/json"
+    }
+    today = datetime.date.today().strftime("%d.%m.%Y")
+    prompt = (
+        f"Сегодня {today}. Вот запрос пользователя: \"{query}\".\n\n"
+        "Твоя задача:\n"
+        "- Если запрос можно проверить как факт (например, 'сегодня август', 'закон подписан'), "
+        "проверь его актуальность через поиск в интернете. Если факт верен, ответь 'ДА: ' и кратко объясни. "
+        "Если неверен — ответь 'НЕТ'.\n"
+        "- Если запрос является поисковой темой (например, 'снижение цен на билеты'), "
+        "найди самую свежую новость за последние сутки. Если новость с официальным подтверждением найдена — "
+        "ответь 'ДА: ' и кратко опиши суть. Если нет — ответь 'НЕТ'.\n\n"
+        "Отвечай только в таком формате, без лишних слов."
+    )
+    payload = {
+        "model": "deepseek-chat",
+        "input": prompt,
+        "tools": [{"type": "web_search"}],
+        "temperature": 0.3,
+        "max_output_tokens": 600
+    }
+    try:
+        resp = requests.post(
+            "https://api.deepseek.com/v1/responses",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            answer = ""
+            for item in data.get("output", []):
+                if item.get("type") == "message":
+                    answer = item.get("content", [{}])[0].get("text", "").strip()
+                    break
+            print(f"  [DEBUG] Full answer: {answer}")
+            if "ДА:" in answer:
+                news_start = answer.find("ДА:") + 3
+                news = answer[news_start:].strip().split("\n")[0]
+                return True, news
+            elif answer.startswith("ДА"):
+                news = answer[2:].strip().lstrip(": ").strip()
+                return True, news
+        else:
+            print(f"  [DEBUG] Error body: {resp.text}")
+    except Exception as e:
+        print(f"  [DEBUG] Exception: {e}")
+    return False, None

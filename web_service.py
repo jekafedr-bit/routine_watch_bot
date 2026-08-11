@@ -1,11 +1,13 @@
 import os
+import datetime
 import requests
 from flask import Flask, request
 from shared import (
     TOKEN, ADMIN_CHAT_ID, send_telegram, is_allowed,
     get_next_task_id, save_task, delete_task,
     get_user_task_ids, get_task_info, set_task_paused,
-    parse_duration, migrate_legacy_tasks
+    parse_duration, migrate_legacy_tasks,
+    update_last_run, check_deepseek   # <-- новые
 )
 
 app = Flask(__name__)
@@ -51,6 +53,14 @@ def handle_message(msg):
         task_id = get_next_task_id()
         save_task(task_id, query, interval, chat_id)   # передаём chat_id
         send_telegram(chat_id, f"✅ Задача #{task_id} создана.\nЗапрос: {query}\nИнтервал: {interval} мин.")
+        # Немедленная проверка
+        found, news = check_deepseek(query)
+        now_iso = datetime.datetime.now(datetime.UTC).isoformat()  # понадобится import datetime
+        if found:
+            send_telegram(chat_id,
+                          f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.")
+            set_task_paused(task_id, True)
+        update_last_run(task_id, now_iso)
         # Уведомление админу, если задачу создал не он сам
         if chat_id != ADMIN_CHAT_ID:
             user = msg.get("from", {})
