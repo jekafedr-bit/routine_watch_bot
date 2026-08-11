@@ -68,6 +68,12 @@ def get_task_info(task_id):
 def set_task_paused(task_id, paused):
     r.hset(f"{TASK_PREFIX}{task_id}", "paused", "1" if paused else "0")
 
+def pause_user_tasks(chat_id):
+    """Ставит на паузу все активные задачи пользователя."""
+    task_ids = get_user_task_ids(chat_id)
+    for tid in task_ids:
+        set_task_paused(tid, True)
+
 def update_last_run(task_id, ts):
     r.hset(f"{TASK_PREFIX}{task_id}", "last_run", ts)
 

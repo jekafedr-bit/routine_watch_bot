@@ -7,7 +7,7 @@ from shared import (
     get_next_task_id, save_task, delete_task,
     get_user_task_ids, get_task_info, set_task_paused,
     parse_duration, migrate_legacy_tasks,
-    update_last_run, check_deepseek   # <-- новые
+    update_last_run, check_deepseek, pause_user_tasks
 )
 from user_management import (
     is_allowed, notify_admin_unauthorized,
@@ -187,7 +187,8 @@ def handle_message(msg):
             send_telegram(chat_id, "Неверный формат ID.")
             return
         remove_dynamic_user(user_id)
-        send_telegram(chat_id, f"✅ Пользователь {user_id} удалён из динамического доступа.")
+        pause_user_tasks(user_id)
+        send_telegram(chat_id, f"✅ Пользователь {user_id} удалён из доступа, все его задачи остановлены.")
 
 # ---------- Вебхук ----------
 @app.route("/webhook", methods=["POST"])
