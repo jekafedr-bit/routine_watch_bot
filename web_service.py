@@ -51,6 +51,14 @@ def handle_message(msg):
         task_id = get_next_task_id()
         save_task(task_id, query, interval, chat_id)   # передаём chat_id
         send_telegram(chat_id, f"✅ Задача #{task_id} создана.\nЗапрос: {query}\nИнтервал: {interval} мин.")
+        # Уведомление админу, если задачу создал не он сам
+        if chat_id != ADMIN_CHAT_ID:
+            user = msg.get("from", {})
+            username = user.get("username", user.get("first_name", str(chat_id)))
+            send_telegram(
+                ADMIN_CHAT_ID,
+                f"👤 Пользователь @{username} (chat_id {chat_id}) создал задачу #{task_id}:\n{query[:200]}"
+            )
 
     elif text.startswith("/tasks"):
         ids = get_user_task_ids(chat_id)   # только задачи пользователя
