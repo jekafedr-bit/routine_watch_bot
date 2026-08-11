@@ -9,12 +9,14 @@ REDIS_URL = os.environ["UPSTASH_REDIS_URL"]
 ADMIN_CHAT_ID = int(os.environ["ADMIN_CHAT_ID"])
 DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 
-# Список разрешённых пользователей (через запятую). Если пусто – только ADMIN_CHAT_ID
+# Админ всегда имеет доступ, даже если ALLOWED_USERS не задана или задана без него
+ALLOWED_USERS = {ADMIN_CHAT_ID}
 allowed_raw = os.environ.get("ALLOWED_USERS", "")
 if allowed_raw:
-    ALLOWED_USERS = set(int(uid.strip()) for uid in allowed_raw.split(",") if uid.strip())
-else:
-    ALLOWED_USERS = {ADMIN_CHAT_ID}
+    for uid in allowed_raw.split(","):
+        uid = uid.strip()
+        if uid:
+            ALLOWED_USERS.add(int(uid))
 
 r = redis.from_url(REDIS_URL)
 
