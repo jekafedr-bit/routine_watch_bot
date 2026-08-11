@@ -1,34 +1,10 @@
-import os
-import redis
+import datetime
+from datetime import timedelta
 import requests
-from datetime import datetime, timedelta
-
-# Переменные окружения
-TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-DEEPSEEK_KEY = os.environ["DEEPSEEK_API_KEY"]
-REDIS_URL = os.environ["UPSTASH_REDIS_URL"]
-ADMIN_CHAT_ID = int(os.environ["ADMIN_CHAT_ID"])
-
-r = redis.from_url(REDIS_URL)
-
-TASKS_SET = "tasks"
-TASK_PREFIX = "task:"
-
-def get_all_task_ids():
-    return list(r.smembers(TASKS_SET))
-
-def get_task_info(task_id):
-    raw = r.hgetall(f"{TASK_PREFIX}{task_id}")
-    if not raw:
-        return None
-    return {k.decode(): v.decode() for k, v in raw.items()}
-
-def update_last_run(task_id, ts):
-    r.hset(f"{TASK_PREFIX}{task_id}", "last_run", ts)
-
-def send_telegram(chat_id, text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
+from shared import (
+    TOKEN, ADMIN_CHAT_ID, DEEPSEEK_KEY, send_telegram,
+    get_all_task_ids, get_task_info, update_last_run
+)
 
 def check_deepseek(query):
     headers = {
@@ -67,7 +43,7 @@ def process_due_tasks():
             last_run = now - timedelta(days=1)
         else:
             try:
-                last_run = datetime.fromisoformat(last_run_str)
+                last_run = datetime.datetime.fromisoformat(last_run_str)
             except:
                 last_run = now - timedelta(days=1)
         interval = int(info.get("interval", "1440"))

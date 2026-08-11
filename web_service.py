@@ -1,78 +1,13 @@
 import os
-import redis
-import requests
-import datetime
 from flask import Flask, request
+from shared import (
+    TOKEN, ADMIN_CHAT_ID, send_telegram,
+    get_next_task_id, save_task, delete_task,
+    get_all_task_ids, get_task_info, set_task_paused,
+    parse_duration
+)
 
 app = Flask(__name__)
-
-# ---------- Переменные окружения ----------
-TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-REDIS_URL = os.environ["UPSTASH_REDIS_URL"]
-ADMIN_CHAT_ID = int(os.environ["ADMIN_CHAT_ID"])
-
-r = redis.from_url(REDIS_URL)
-
-TASKS_SET = "tasks"
-TASK_PREFIX = "task:"
-TASK_ID_COUNTER = "task_id_counter"
-
-# ---------- Работа с задачами (сохранение / чтение) ----------
-def get_next_task_id():
-    return r.incr(TASK_ID_COUNTER)
-
-def save_task(task_id, query, interval_min):
-    import datetime
-    now = datetime.datetime.now(datetime.UTC).isoformat()
-    r.hset(f"{TASK_PREFIX}{task_id}", mapping={
-        "query": query,
-        "interval": interval_min,
-        "last_run": now,
-        "paused": "0",
-        "created": now
-    })
-    r.sadd(TASKS_SET, task_id)
-
-def delete_task(task_id):
-    r.delete(f"{TASK_PREFIX}{task_id}")
-    r.srem(TASKS_SET, task_id)
-
-def get_all_task_ids():
-    return list(r.smembers(TASKS_SET))
-
-def get_task_info(task_id):
-    raw = r.hgetall(f"{TASK_PREFIX}{task_id}")
-    if not raw:
-        return None
-    return {k.decode(): v.decode() for k, v in raw.items()}
-
-def set_task_paused(task_id, paused):
-    r.hset(f"{TASK_PREFIX}{task_id}", "paused", "1" if paused else "0")
-
-def send_telegram(chat_id, text, parse_mode="HTML"):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": parse_mode})
-
-def parse_duration(text):
-    text = text.strip().lower()
-    if text in ("day", "daily", "сутки"):
-        return 1440
-    if text in ("hour", "hourly", "час"):
-        return 60
-    parts = text.split()
-    if len(parts) >= 2:
-        try:
-            num = float(parts[0])
-            unit = parts[1]
-            if unit in ("min", "mins", "minute", "minutes", "минуты", "минут"):
-                return int(num)
-            elif unit in ("hour", "hours", "часа", "часов"):
-                return int(num * 60)
-            elif unit in ("day", "days", "дня", "дней"):
-                return int(num * 1440)
-        except:
-            pass
-    return None
 
 # ---------- Обработка команд ----------
 def handle_message(msg):
@@ -127,7 +62,7 @@ def handle_message(msg):
             paused = "⏸" if info.get("paused") == "1" else "▶"
             q = info.get("query", "")[:50]
             interval = info.get("interval", "?")
-            lines.append(f"{paused} <b>#{tid.decode() if isinstance(tid, bytes) else tid}</b> {q}… ({interval} мин)")
+            lines.append(f"{paused} <b>#{tid}</b> {q}… ({interval} мин)")
         send_telegram(chat_id, "\n".join(lines), parse_mode="HTML")
 
     elif text.startswith("/taskinfo"):
