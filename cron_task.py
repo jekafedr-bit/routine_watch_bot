@@ -7,41 +7,45 @@ from shared import (
 )
 
 def check_deepseek(query):
-    print(f"  [DEBUG] Sending query to DeepSeek: {query[:80]}...")
+    print(f"  [DEBUG] Using Responses API with web_search for query: {query[:80]}...")
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
         "Content-Type": "application/json"
     }
-    # Подставляем сегодняшнюю дату
     today = datetime.date.today().strftime("%d.%m.%Y")
-    prompt = (
-        f"Сегодня {today}. Выполни поиск в интернете и найди САМЫЕ СВЕЖИЕ новости, "
-        f"опубликованные ЗА ПОСЛЕДНИЕ СУТКИ, по запросу: {query}\n\n"
-        "Если официальное подтверждение или важная новость от надёжного источника НАЙДЕНА, "
-        "ответь строго 'ДА: ' и кратко опиши суть (1-3 предложения).\n"
-        "Если НИЧЕГО не найдено, ответь 'НЕТ' и объясни, что проверил."
-    )
     payload = {
         "model": "deepseek-chat",
-        "messages": [{"role": "user", "content": prompt}],
-        "search": True,
+        "input": f"Сегодня {today}. Найди самую свежую новость за последние сутки по запросу: {query}. Ответь строго в формате: если есть официальное подтверждение — 'ДА: <суть>', если нет — 'НЕТ'.",
+        "tools": [{"type": "web_search"}],
         "temperature": 0.3,
-        "max_tokens": 600
+        "max_output_tokens": 600
     }
     try:
-        resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=30)
-        print(f"  [DEBUG] DeepSeek response status: {resp.status_code}")
+        resp = requests.post(
+            "https://api.deepseek.com/v1/responses",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        print(f"  [DEBUG] Status: {resp.status_code}")
         if resp.status_code == 200:
             data = resp.json()
-            answer = data["choices"][0]["message"]["content"].strip()
-            print(f"  [DEBUG] Full answer: {answer}")
+            # Ищем финальный ответ среди output
+            answer = ""
+            for item in data.get("output", []):
+                if item.get("type") == "message":
+                    answer = item.get("content", [{}])[0].get("text", "").strip()
+                    break
+            if not answer:
+                answer = "НЕТ"
+            print(f"  [DEBUG] Final answer: {answer}")
             if answer.startswith("ДА"):
                 news = answer.split(":", 1)[1].strip() if ":" in answer else "Нашлась новость"
                 return True, news
         else:
-            print(f"  [DEBUG] DeepSeek error body: {resp.text}")
+            print(f"  [DEBUG] Error body: {resp.text}")
     except Exception as e:
-        print(f"  [DEBUG] DeepSeek exception: {e}")
+        print(f"  [DEBUG] Exception: {e}")
     return False, None
 
 def process_due_tasks():
