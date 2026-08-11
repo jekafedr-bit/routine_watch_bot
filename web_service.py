@@ -22,7 +22,9 @@ def handle_message(msg):
 
     # Проверка доступа
     if not is_allowed(chat_id):
-        send_telegram(chat_id, "У вас нет доступа к этому боту.")
+        user_info = msg.get("from", {})
+        notify_admin_unauthorized(chat_id, user_info)
+        send_telegram(chat_id, "У вас нет доступа к этому боту. Запрос администратору отправлен.")
         return
 
     if text.startswith("/start"):
