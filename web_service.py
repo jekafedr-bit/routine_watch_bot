@@ -3,7 +3,7 @@ import datetime
 import requests
 from flask import Flask, request
 from shared import (
-    TOKEN, ADMIN_CHAT_ID, send_telegram, is_allowed,
+    TOKEN, ADMIN_CHAT_ID, send_telegram,
     get_next_task_id, save_task, delete_task,
     get_user_task_ids, get_task_info, set_task_paused,
     parse_duration, migrate_legacy_tasks,
