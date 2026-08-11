@@ -5,7 +5,7 @@ from shared import (
     TOKEN, ADMIN_CHAT_ID, send_telegram, is_allowed,
     get_next_task_id, save_task, delete_task,
     get_user_task_ids, get_task_info, set_task_paused,
-    parse_duration
+    parse_duration, migrate_legacy_tasks
 )
 
 app = Flask(__name__)
@@ -154,5 +154,6 @@ def set_webhook():
         print("Webhook set:", resp.json())
 
 if __name__ == "__main__":
+    shared.migrate_legacy_tasks(ADMIN_CHAT_ID)
     set_webhook()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
