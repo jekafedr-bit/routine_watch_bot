@@ -154,6 +154,6 @@ def set_webhook():
         print("Webhook set:", resp.json())
 
 if __name__ == "__main__":
-    shared.migrate_legacy_tasks(ADMIN_CHAT_ID)
+    migrate_legacy_tasks(ADMIN_CHAT_ID)
     set_webhook()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
