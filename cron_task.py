@@ -12,29 +12,38 @@ def check_deepseek(query):
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
         "Content-Type": "application/json"
     }
-    # Изменённый промпт: просим просто найти новость и кратко ответить, начиная с ДА/НЕТ
     prompt = (
-        f"Найди в интернете актуальную информацию по запросу: {query}\n\n"
-        "Если есть официальное подтверждение или новость, напиши 'ДА: ' и кратко опиши суть (1-2 предложения). "
-        "Если ничего нет, напиши просто 'НЕТ'."
+        f"Пожалуйста, выполни поиск в интернете по запросу: {query}\n\n"
+        "Если официальное подтверждение найдено, ответь строго 'ДА: ' и краткую суть. "
+        "Если нет — 'НЕТ'.\n\n"
+        "В начале ответа также укажи, удалось ли выполнить поиск по интернету, например: "
+        "'[Поиск выполнен] ДА: ...' или '[Поиск не выполнялся] НЕТ'."
     )
     payload = {
         "model": "deepseek-chat",
         "messages": [{"role": "user", "content": prompt}],
         "search": True,
         "temperature": 0.3,
-        "max_tokens": 400
+        "max_tokens": 600
     }
     try:
-        resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=25)
+        resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=30)
         print(f"  [DEBUG] DeepSeek response status: {resp.status_code}")
         if resp.status_code == 200:
             data = resp.json()
             answer = data["choices"][0]["message"]["content"].strip()
-            print(f"  [DEBUG] DeepSeek answer: {answer}")
-            if answer.startswith("ДА"):
-                news = answer.split(":", 1)[1].strip() if ":" in answer else "Нашлась новость"
-                return True, news
+            print(f"  [DEBUG] Full answer: {answer}")
+            if answer.startswith("[Поиск выполнен]") or answer.startswith("[Поиск не выполнялся]"):
+                # извлекаем реальный ответ после префикса
+                cleaned = answer.split("] ", 1)[1] if "] " in answer else answer
+                if cleaned.startswith("ДА"):
+                    news = cleaned.split(":", 1)[1].strip() if ":" in cleaned else "Нашлась новость"
+                    return True, news
+            else:
+                # если ответ не содержит ожидаемого префикса — всё равно проверяем на ДА
+                if answer.startswith("ДА"):
+                    news = answer.split(":", 1)[1].strip() if ":" in answer else "Нашлась новость"
+                    return True, news
         else:
             print(f"  [DEBUG] DeepSeek error body: {resp.text}")
     except Exception as e:
