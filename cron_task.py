@@ -55,7 +55,7 @@ def check_deepseek(query):
     return False, None
 
 def process_due_tasks():
-    now = datetime.utcnow()
+    now = datetime.datetime.now(datetime.UTC)
     now_iso = now.isoformat()
     task_ids = get_all_task_ids()
     for tid in task_ids:

@@ -1,6 +1,7 @@
 import os
 import redis
 import requests
+import datetime
 from flask import Flask, request
 
 app = Flask(__name__)
@@ -22,7 +23,7 @@ def get_next_task_id():
 
 def save_task(task_id, query, interval_min):
     import datetime
-    now = datetime.datetime.utcnow().isoformat()
+    now = datetime.datetime.now(datetime.UTC).isoformat()
     r.hset(f"{TASK_PREFIX}{task_id}", mapping={
         "query": query,
         "interval": interval_min,
