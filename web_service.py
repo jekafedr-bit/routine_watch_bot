@@ -11,7 +11,7 @@ from shared import (
     parse_duration, migrate_legacy_tasks,
     update_last_run, check_deepseek, pause_user_tasks,
     get_donation_message,
-    set_pending_task, get_pending_task, delete_pending_task, now_msk  # ← новые
+    set_pending_task, get_pending_task, delete_pending_task, now_msk, format_msk  # ← новые
 )
 from user_management import (
     is_allowed, notify_admin_unauthorized,
