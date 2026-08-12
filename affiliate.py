@@ -128,8 +128,9 @@ def get_joined_programs():
         if resp.status_code == 200:
             data = resp.json()
             programs = data.get("results", [])
-            logger.info(f"Fetched {len(programs)} joined programs")
-            # Логируем названия и наличие партнёрской ссылки (gotolink)
+            # Фильтруем только программы с непустой ссылкой
+            programs = [p for p in programs if p.get("gotolink")]
+            logger.info(f"Fetched {len(programs)} joined programs with links")
             for p in programs:
                 logger.info(f"Program: {p.get('name')} -> gotolink: {p.get('gotolink', '')}")
             _joined_programs_cache = programs
@@ -245,9 +246,15 @@ def match_program_via_deepseek(query, programs):
         logger.warning("DEEPSEEK_API_KEY not set, cannot use semantic matching")
         return None
 
+    # Фильтруем только программы с непустой ссылкой
+    programs_with_links = [p for p in programs if p.get("gotolink")]
+    if not programs_with_links:
+        logger.warning("No programs with affiliate links available")
+        return None
+
     # Формируем компактный список программ для модели
     program_list = []
-    for p in programs:
+    for p in programs_with_links:
         name = p.get("name", "")
         categories = ", ".join([c.get("name", "") for c in p.get("categories", []) if c.get("name")])
         program_list.append(f"ID: {p.get('id')}, Название: {name}, Категории: {categories}")
@@ -293,8 +300,8 @@ def match_program_via_deepseek(query, programs):
             match = re.search(r'ID:\s*(\d+)', answer)
             if match:
                 program_id = int(match.group(1))
-                # Находим программу в списке
-                for p in programs:
+                # Находим программу в отфильтрованном списке
+                for p in programs_with_links:
                     if p.get("id") == program_id:
                         goto = p.get("gotolink", "")
                         if goto:
