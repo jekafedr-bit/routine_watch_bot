@@ -186,7 +186,7 @@ def check_deepseek(query):
             "https://api.deepseek.com/v1/responses",
             headers=headers,
             json=payload,
-            timeout=30
+            timeout=60
         )
         if resp.status_code == 200:
             data = resp.json()
