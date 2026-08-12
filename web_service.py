@@ -267,6 +267,10 @@ def set_webhook():
         print("Webhook set:", resp.json())
 
 if __name__ == "__main__":
-    migrate_legacy_tasks(ADMIN_CHAT_ID)
+    if os.environ.get("RENDER"):
+        print("Running on Render, performing legacy task migration...")
+        migrate_legacy_tasks(ADMIN_CHAT_ID)
+    else:
+        print("Running locally, skipping legacy task migration (no Redis access assumed).")
     set_webhook()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))

@@ -118,11 +118,12 @@ def parse_duration(text):
     return None
 
 def migrate_legacy_tasks(admin_chat_id):
-    """
-    Переносит старые задачи (без chat_id) на admin_chat_id и добавляет в user_tasks.
-    Выполняется один раз при старте.
-    """
+    """Переносит старые задачи (без chat_id) на admin_chat_id и добавляет в user_tasks."""
+    print("Checking for legacy tasks...")
     all_ids = [tid.decode() for tid in r.smembers(TASKS_SET)]
+    if not all_ids:
+        print("No tasks found at all, nothing to migrate.")
+        return
     migrated = 0
     for tid in all_ids:
         info = r.hgetall(f"{TASK_PREFIX}{tid}")
@@ -136,6 +137,8 @@ def migrate_legacy_tasks(admin_chat_id):
             migrated += 1
     if migrated:
         print(f"Migrated {migrated} legacy tasks to user {admin_chat_id}")
+    else:
+        print("No legacy tasks found (all tasks already have chat_id).")
 
 def get_all_task_ids():
     """Возвращает список всех ID задач (глобально). Используется в cron_task.py."""
