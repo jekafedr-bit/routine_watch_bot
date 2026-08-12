@@ -129,11 +129,9 @@ def get_joined_programs():
             data = resp.json()
             programs = data.get("results", [])
             logger.info(f"Fetched {len(programs)} joined programs")
-            if programs:
-                logger.info(f"First program keys: {list(programs[0].keys())}")
-                logger.info(f"First program sample: {programs[0]}")
+            # Логируем названия и наличие партнёрской ссылки (gotolink)
             for p in programs:
-                logger.info(f"Program: {p.get('name')} -> id: {p.get('id')}, campaign_id: {p.get('campaign_id')}")
+                logger.info(f"Program: {p.get('name')} -> gotolink: {p.get('gotolink', '')}")
             _joined_programs_cache = programs
             _joined_programs_exp = datetime.datetime.now() + datetime.timedelta(seconds=3600)
             return programs
@@ -201,24 +199,17 @@ def fetch_admitad_link(query):
             categories = prog.get("categories", [])
             # Поиск по названию
             if kw_lower in name:
-                # Определяем ID программы
-                campaign_id = prog.get("id") or prog.get("campaign_id") or prog.get("advcampaign_id")
-                if campaign_id:
-                    goto = get_program_goto_link(campaign_id)
-                    if goto:
-                        logger.info(f"Found affiliate program by keyword '{kw}': {prog.get('name')}")
-                        return prog.get("name"), goto
-                else:
-                    logger.warning(f"No campaign ID for program {prog.get('name')}")
+                goto = prog.get("gotolink", "")
+                if goto:
+                    logger.info(f"Found affiliate program by keyword '{kw}': {prog.get('name')} -> {goto[:60]}...")
+                    return prog.get("name"), goto
             # Поиск по категориям
             for cat in categories:
                 if kw_lower in cat.get("name", "").lower():
-                    campaign_id = prog.get("id") or prog.get("campaign_id") or prog.get("advcampaign_id")
-                    if campaign_id:
-                        goto = get_program_goto_link(campaign_id)
-                        if goto:
-                            logger.info(f"Found affiliate program by category keyword '{kw}': {prog.get('name')}")
-                            return prog.get("name"), goto
+                    goto = prog.get("gotolink", "")
+                    if goto:
+                        logger.info(f"Found affiliate program by category keyword '{kw}': {prog.get('name')} -> {goto[:60]}...")
+                        return prog.get("name"), goto
     return None
 
 def get_program_goto_link(campaign_id):
