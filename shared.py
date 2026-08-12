@@ -2,6 +2,15 @@ import os
 import datetime
 import redis
 import requests
+import logging
+
+if not logging.getLogger().hasHandlers():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    )
+
+logger = logging.getLogger(__name__)
 
 # ---------- Окружение ----------
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -119,10 +128,10 @@ def parse_duration(text):
 
 def migrate_legacy_tasks(admin_chat_id):
     """Переносит старые задачи (без chat_id) на admin_chat_id и добавляет в user_tasks."""
-    print("Checking for legacy tasks...")
+    logger.info("Checking for legacy tasks...")
     all_ids = [tid.decode() for tid in r.smembers(TASKS_SET)]
     if not all_ids:
-        print("No tasks found at all, nothing to migrate.")
+        logger.info("No tasks found at all, nothing to migrate.")
         return
     migrated = 0
     for tid in all_ids:
@@ -136,9 +145,9 @@ def migrate_legacy_tasks(admin_chat_id):
             r.sadd(f"{USER_TASKS_PREFIX}{admin_chat_id}", tid)
             migrated += 1
     if migrated:
-        print(f"Migrated {migrated} legacy tasks to user {admin_chat_id}")
+        logger.info(f"Migrated {migrated} legacy tasks to user {admin_chat_id}")
     else:
-        print("No legacy tasks found (all tasks already have chat_id).")
+        logger.info("No legacy tasks found (all tasks already have chat_id).")
 
 def get_all_task_ids():
     """Возвращает список всех ID задач (глобально). Используется в cron_task.py."""
@@ -148,7 +157,7 @@ def get_all_task_ids():
 def check_deepseek(query):
     """Проверяет новость или факт через DeepSeek Responses API с web_search.
        Возвращает (True, текст_новости) или (False, None)."""
-    print(f"  [DEBUG] Checking query: {query[:80]}...")
+    logger.info(f"  [DEBUG] Checking query: {query[:80]}...")
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
         "Content-Type": "application/json"
@@ -186,7 +195,7 @@ def check_deepseek(query):
                 if item.get("type") == "message":
                     answer = item.get("content", [{}])[0].get("text", "").strip()
                     break
-            print(f"  [DEBUG] Full answer: {answer}")
+            logger.info(f"  [DEBUG] Full answer: {answer}")
             if "ДА:" in answer:
                 news_start = answer.find("ДА:") + 3
                 news = answer[news_start:].strip().split("\n")[0]
@@ -195,9 +204,9 @@ def check_deepseek(query):
                 news = answer[2:].strip().lstrip(": ").strip()
                 return True, news
         else:
-            print(f"  [DEBUG] Error body: {resp.text}")
+            logger.info(f"  [DEBUG] Error body: {resp.text}")
     except Exception as e:
-        print(f"  [DEBUG] Exception: {e}")
+        logger.info(f"  [DEBUG] Exception: {e}")
     return False, None
 
 # ---------- Донаты ----------

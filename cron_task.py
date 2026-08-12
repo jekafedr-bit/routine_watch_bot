@@ -1,5 +1,7 @@
 import datetime
 from datetime import timedelta
+import logging
+logger = logging.getLogger(__name__)
 
 from shared import (
     ADMIN_CHAT_ID, send_telegram,
@@ -33,7 +35,7 @@ def process_due_tasks():
                 last_run = now - timedelta(days=1)
         interval = int(info.get("interval", "1440"))
         if (now - last_run).total_seconds() >= interval * 60:
-            print(f"Checking task {tid}")
+            logger.info(f"Checking task {tid}")
             found, news = check_deepseek(info["query"])
             owner_chat_id = int(info.get("chat_id", ADMIN_CHAT_ID))
             if found:

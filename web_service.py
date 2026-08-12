@@ -2,7 +2,8 @@ import os
 
 import requests
 from flask import Flask, request
-
+import logging
+logger = logging.getLogger(__name__)
 from shared import (
     TOKEN, ADMIN_CHAT_ID, send_telegram,
     get_next_task_id, save_task, delete_task,
@@ -264,13 +265,13 @@ def set_webhook():
     if base:
         url = f"{base}/webhook"
         resp = requests.post(f"https://api.telegram.org/bot{TOKEN}/setWebhook", json={"url": url})
-        print("Webhook set:", resp.json())
+        logger.info("Webhook set:", resp.json())
 
 if __name__ == "__main__":
     if os.environ.get("RENDER"):
-        print("Running on Render, performing legacy task migration...")
+        logger.info("Running on Render, performing legacy task migration...")
         migrate_legacy_tasks(ADMIN_CHAT_ID)
     else:
-        print("Running locally, skipping legacy task migration (no Redis access assumed).")
+        logger.info("Running locally, skipping legacy task migration (no Redis access assumed).")
     set_webhook()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
