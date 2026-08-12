@@ -1,4 +1,5 @@
 import os
+import base64
 import datetime
 import requests
 import logging
@@ -6,13 +7,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 ADMITAD_TOKEN_URL = "https://api.admitad.com/token/"
-ADMITAD_PROGRAMS_URL = "https://api.admitad.com/programs/"
+ADMITAD_WEBSITES_URL = "https://api.admitad.com/websites/v2/"
+ADMITAD_WEBSITE_PROGRAMS_URL = "https://api.admitad.com/advcampaigns/website/{website_id}/"
 
-# Кэш токена
 _admitad_token = None
 _admitad_token_exp = None
+_website_id = None
+_joined_programs_cache = None
+_joined_programs_exp = None
 
-import base64
 
 def get_admitad_access_token():
     """Получает access token для Admitad API (кэширует на 50 минут)."""
@@ -23,34 +26,20 @@ def get_admitad_access_token():
 
     client_id = os.environ.get("ADMITAD_CLIENT_ID")
     client_secret = os.environ.get("ADMITAD_CLIENT_SECRET")
-
-    if not client_id:
-        logger.warning("ADMITAD_CLIENT_ID is not set")
-    else:
-        logger.info(f"ADMITAD_CLIENT_ID is set (length={len(client_id)}, prefix={client_id[:4]}...)")
-
-    if not client_secret:
-        logger.warning("ADMITAD_CLIENT_SECRET is not set")
-    else:
-        logger.info(f"ADMITAD_CLIENT_SECRET is set (length={len(client_secret)}, prefix={client_secret[:4]}...)")
-
     if not client_id or not client_secret:
-        logger.warning("Admitad credentials incomplete")
+        logger.warning("ADMITAD_CLIENT_ID or ADMITAD_CLIENT_SECRET not set")
         return None
 
-    # Формируем Basic Auth: base64(client_id:client_secret)
     credentials = f"{client_id}:{client_secret}"
     encoded = base64.b64encode(credentials.encode()).decode()
     headers = {
         "Authorization": f"Basic {encoded}",
         "Content-Type": "application/x-www-form-urlencoded"
     }
-
-    # Тело запроса: grant_type=client_credentials, client_id и scope
     data = {
         "grant_type": "client_credentials",
         "client_id": client_id,
-        "scope": "advcampaigns banners websites"  # минимальный набор прав
+        "scope": "advcampaigns banners websites"
     }
 
     try:
@@ -68,45 +57,87 @@ def get_admitad_access_token():
     return None
 
 
-def fetch_admitad_link(query, limit=1):
+def get_website_id():
+    """Возвращает ID площадки routine_watch_bot (или первой активной)."""
+    global _website_id
+
+    if _website_id:
+        return _website_id
+
+    # Если задана переменная окружения, используем её
+    env_website_id = os.environ.get("ADMITAD_WEBSITE_ID")
+    if env_website_id:
+        _website_id = int(env_website_id)
+        logger.info(f"Using ADMITAD_WEBSITE_ID={_website_id}")
+        return _website_id
+
     token = get_admitad_access_token()
     if not token:
         return None
 
     headers = {"Authorization": f"Bearer {token}"}
-
-    # Сначала пробуем ключевые слова от DeepSeek
-    keywords = extract_keywords_via_deepseek(query)
-    candidates = keywords + [query]  # добавляем исходный запрос как запасной вариант
-
-    for candidate in candidates:
-        if not candidate:
-            continue
-        params = {
-            "search": candidate,
-            "limit": limit,
-            "has_tool": "true",
-            "language": "ru",
-            "connection_status": "active"
-        }
-        try:
-            resp = requests.get(ADMITAD_PROGRAMS_URL, headers=headers, params=params, timeout=10)
-            logger.info(
-                f"Searching Admitad for '{candidate}': status {resp.status_code}, results: {len(resp.json().get('results', []))}")
-            if resp.status_code == 200:
-                data = resp.json()
-                programs = data.get("results", [])
-                if programs:
-                    prog = programs[0]
-                    name = prog.get("name", "Партнёр")
-                    goto = prog.get("goto_link", "")
-                    if goto:
-                        logger.info(f"Found affiliate link for '{candidate}': {name} -> {goto[:60]}...")
-                        return name, goto
-            # Если 404 или пусто, пробуем следующего кандидата
-        except Exception as e:
-            logger.warning(f"Search exception for '{candidate}': {e}")
+    try:
+        resp = requests.get(ADMITAD_WEBSITES_URL, headers=headers, timeout=15)
+        if resp.status_code == 200:
+            websites = resp.json()
+            # Ищем по имени или берём первый активный
+            target = None
+            for site in websites:
+                if site.get("name", "").lower() == "routine_watch_bot":
+                    target = site
+                    break
+            if not target:
+                for site in websites:
+                    if site.get("status", "").lower() == "active":
+                        target = site
+                        break
+            if target:
+                _website_id = int(target["id"])
+                logger.info(f"Found website_id={_website_id} (name={target.get('name')})")
+                return _website_id
+            else:
+                logger.warning("No active websites found")
+        else:
+            logger.warning(f"Failed to get websites: {resp.status_code} {resp.text}")
+    except Exception as e:
+        logger.warning(f"Get websites exception: {e}")
     return None
+
+
+def get_joined_programs():
+    """Возвращает список подключённых программ (кэш 1 час)."""
+    global _joined_programs_cache, _joined_programs_exp
+
+    if _joined_programs_cache and _joined_programs_exp and datetime.datetime.now() < _joined_programs_exp:
+        return _joined_programs_cache
+
+    token = get_admitad_access_token()
+    if not token:
+        return []
+
+    website_id = get_website_id()
+    if not website_id:
+        return []
+
+    url = ADMITAD_WEBSITE_PROGRAMS_URL.format(website_id=website_id)
+    headers = {"Authorization": f"Bearer {token}"}
+    params = {"limit": 100}
+
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=15)
+        if resp.status_code == 200:
+            data = resp.json()
+            programs = data.get("results", [])
+            logger.info(f"Fetched {len(programs)} joined programs")
+            _joined_programs_cache = programs
+            _joined_programs_exp = datetime.datetime.now() + datetime.timedelta(seconds=3600)
+            return programs
+        else:
+            logger.warning(f"Failed to get joined programs: {resp.status_code} {resp.text}")
+    except Exception as e:
+        logger.warning(f"Get joined programs exception: {e}")
+    return []
+
 
 def extract_keywords_via_deepseek(query, max_keywords=3):
     """Извлекает ключевые слова для поиска партнёрской программы."""
@@ -140,10 +171,41 @@ def extract_keywords_via_deepseek(query, max_keywords=3):
                     answer = item.get("content", [{}])[0].get("text", "").strip()
                     break
             if answer:
-                # Разделяем по запятой и очищаем
                 keywords = [k.strip() for k in answer.split(",") if k.strip()]
                 logger.info(f"DeepSeek extracted keywords: {keywords}")
                 return keywords
     except Exception as e:
         logger.warning(f"DeepSeek keyword extraction failed: {e}")
     return []
+
+
+def fetch_admitad_link(query):
+    """Ищет партнёрскую программу по ключевым словам (локально среди подключённых)."""
+    keywords = extract_keywords_via_deepseek(query)
+    if not keywords:
+        # fallback: разбиваем запрос на слова
+        keywords = [w for w in query.split() if len(w) > 2]
+
+    programs = get_joined_programs()
+    if not programs:
+        logger.warning("No joined programs available")
+        return None
+
+    for kw in keywords:
+        kw_lower = kw.lower()
+        for prog in programs:
+            name = prog.get("name", "").lower()
+            categories = prog.get("categories", [])
+            if kw_lower in name:
+                goto = prog.get("goto_link", "")
+                if goto:
+                    logger.info(f"Found affiliate program by keyword '{kw}': {prog.get('name')}")
+                    return prog.get("name"), goto
+            # проверка в категориях
+            for cat in categories:
+                if kw_lower in cat.get("name", "").lower():
+                    goto = prog.get("goto_link", "")
+                    if goto:
+                        logger.info(f"Found affiliate program by category keyword '{kw}': {prog.get('name')}")
+                        return prog.get("name"), goto
+    return None
