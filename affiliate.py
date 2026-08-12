@@ -184,7 +184,7 @@ def extract_keywords_via_deepseek(query, max_keywords=3):
 
 def fetch_admitad_link(query):
     """Ищет партнёрскую программу по ключевым словам (локально), а при неудаче — через DeepSeek."""
-    # 1. Локальный поиск по ключевым словам (как сейчас)
+    # 1. Локальный поиск по ключевым словам
     keywords = extract_keywords_via_deepseek(query)
     if not keywords:
         keywords = [w for w in query.split() if len(w) > 2]
@@ -197,13 +197,28 @@ def fetch_admitad_link(query):
     for kw in keywords:
         kw_lower = kw.lower()
         for prog in programs:
+            # Проверяем название программы
             name = prog.get("name", "").lower()
-            categories = prog.get("categories", [])
             if kw_lower in name:
                 goto = prog.get("gotolink", "")
                 if goto:
-                    logger.info(f"Found affiliate program by keyword '{kw}': {prog.get('name')}")
+                    logger.info(f"Found affiliate program by name keyword '{kw}': {prog.get('name')}")
                     return prog.get("name"), goto
+
+            # Проверяем алиасы (синонимы) программы
+            aliases = prog.get("name_aliases", "").lower()
+            if aliases:
+                # Разбиваем алиасы по запятым и ищем вхождение
+                alias_list = [a.strip() for a in aliases.split(",") if a.strip()]
+                for alias in alias_list:
+                    if kw_lower in alias:
+                        goto = prog.get("gotolink", "")
+                        if goto:
+                            logger.info(f"Found affiliate program by alias '{kw}' in '{prog.get('name')}': {alias}")
+                            return prog.get("name"), goto
+
+            # Проверяем категории
+            categories = prog.get("categories", [])
             for cat in categories:
                 if kw_lower in cat.get("name", "").lower():
                     goto = prog.get("gotolink", "")
@@ -256,8 +271,11 @@ def match_program_via_deepseek(query, programs):
     program_list = []
     for p in programs_with_links:
         name = p.get("name", "")
+        aliases = p.get("name_aliases", "")
         categories = ", ".join([c.get("name", "") for c in p.get("categories", []) if c.get("name")])
-        program_list.append(f"ID: {p.get('id')}, Название: {name}, Категории: {categories}")
+        program_list.append(
+            f"ID: {p.get('id')}, Название: {name}, Алиасы: {aliases}, Категории: {categories}"
+        )
 
     if not program_list:
         return None
@@ -272,9 +290,9 @@ def match_program_via_deepseek(query, programs):
         "model": "deepseek-chat",
         "input": (
             f"Запрос пользователя: \"{query}\"\n\n"
-            "Ниже список партнёрских программ. Выбери одну программу, которая наиболее "
-            "соответствует запросу пользователя (например, если пользователь спрашивает "
-            "про покупку iPhone, выбери магазин электроники BigGeek или похожий).\n"
+            "Ниже список партнёрских программ. Выбери одну программу, которая **наиболее полезна** "
+            "пользователю по теме запроса. Допускается косвенное соответствие (например, если запрос "
+            "о духах, подойдёт магазин парфюмерии Aroma-butik).\n"
             "Если подходящей программы нет, ответь строго 'НЕТ'.\n"
             "Если есть — ответь строго в формате: 'ID: <id>'\n\n"
             f"{programs_text}"
