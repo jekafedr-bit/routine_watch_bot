@@ -129,9 +129,11 @@ def get_joined_programs():
             data = resp.json()
             programs = data.get("results", [])
             logger.info(f"Fetched {len(programs)} joined programs")
-            # ВРЕМЕННО: логируем названия всех программ
+            if programs:
+                logger.info(f"First program keys: {list(programs[0].keys())}")
+                logger.info(f"First program sample: {programs[0]}")
             for p in programs:
-                logger.info(f"Program: {p.get('name')} -> goto_link: {p.get('goto_link', '')}")
+                logger.info(f"Program: {p.get('name')} -> id: {p.get('id')}, campaign_id: {p.get('campaign_id')}")
             _joined_programs_cache = programs
             _joined_programs_exp = datetime.datetime.now() + datetime.timedelta(seconds=3600)
             return programs
@@ -181,12 +183,10 @@ def extract_keywords_via_deepseek(query, max_keywords=3):
         logger.warning(f"DeepSeek keyword extraction failed: {e}")
     return []
 
-
 def fetch_admitad_link(query):
     """Ищет партнёрскую программу по ключевым словам (локально среди подключённых)."""
     keywords = extract_keywords_via_deepseek(query)
     if not keywords:
-        # fallback: разбиваем запрос на слова
         keywords = [w for w in query.split() if len(w) > 2]
 
     programs = get_joined_programs()
@@ -199,16 +199,45 @@ def fetch_admitad_link(query):
         for prog in programs:
             name = prog.get("name", "").lower()
             categories = prog.get("categories", [])
+            # Поиск по названию
             if kw_lower in name:
-                goto = prog.get("goto_link", "")
-                if goto:
-                    logger.info(f"Found affiliate program by keyword '{kw}': {prog.get('name')}")
-                    return prog.get("name"), goto
-            # проверка в категориях
+                # Определяем ID программы
+                campaign_id = prog.get("id") or prog.get("campaign_id") or prog.get("advcampaign_id")
+                if campaign_id:
+                    goto = get_program_goto_link(campaign_id)
+                    if goto:
+                        logger.info(f"Found affiliate program by keyword '{kw}': {prog.get('name')}")
+                        return prog.get("name"), goto
+                else:
+                    logger.warning(f"No campaign ID for program {prog.get('name')}")
+            # Поиск по категориям
             for cat in categories:
                 if kw_lower in cat.get("name", "").lower():
-                    goto = prog.get("goto_link", "")
-                    if goto:
-                        logger.info(f"Found affiliate program by category keyword '{kw}': {prog.get('name')}")
-                        return prog.get("name"), goto
+                    campaign_id = prog.get("id") or prog.get("campaign_id") or prog.get("advcampaign_id")
+                    if campaign_id:
+                        goto = get_program_goto_link(campaign_id)
+                        if goto:
+                            logger.info(f"Found affiliate program by category keyword '{kw}': {prog.get('name')}")
+                            return prog.get("name"), goto
+    return None
+
+def get_program_goto_link(campaign_id):
+    """Получает goto_link для конкретной программы по её ID."""
+    token = get_admitad_access_token()
+    if not token:
+        return None
+    url = f"https://api.admitad.com/advcampaigns/{campaign_id}/"
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        if resp.status_code == 200:
+            data = resp.json()
+            goto = data.get("goto_link", "")
+            if goto:
+                logger.info(f"Got goto_link for campaign {campaign_id}: {goto[:60]}...")
+                return goto
+        else:
+            logger.warning(f"Failed to get campaign {campaign_id}: {resp.status_code} {resp.text}")
+    except Exception as e:
+        logger.warning(f"Get campaign exception: {e}")
     return None
