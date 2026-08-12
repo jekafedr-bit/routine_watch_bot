@@ -91,6 +91,8 @@ def fetch_admitad_link(query, limit=1):
         }
         try:
             resp = requests.get(ADMITAD_PROGRAMS_URL, headers=headers, params=params, timeout=10)
+            logger.info(
+                f"Searching Admitad for '{candidate}': status {resp.status_code}, results: {len(resp.json().get('results', []))}")
             if resp.status_code == 200:
                 data = resp.json()
                 programs = data.get("results", [])
