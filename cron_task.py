@@ -1,14 +1,16 @@
 import datetime
 from datetime import timedelta
-import requests
+
 from shared import (
-    TOKEN, ADMIN_CHAT_ID, DEEPSEEK_KEY, send_telegram,
+    ADMIN_CHAT_ID, send_telegram,
     get_task_info, update_last_run, set_task_paused,
-    get_all_task_ids, check_deepseek, get_donation_message
+    get_all_task_ids, check_deepseek, get_donation_message,
+    now_msk, format_msk
 )
 
+
 def process_due_tasks():
-    now = datetime.datetime.now(datetime.UTC)
+    now = now_msk()
     now_iso = now.isoformat()
     # Получаем ВСЕ задачи (из общего набора, т.к. нам нужно проверить каждого пользователя)
     all_task_ids = get_all_task_ids()   # эта функция осталась в shared (возвращает все ID из TASKS_SET)
@@ -16,7 +18,12 @@ def process_due_tasks():
         info = get_task_info(tid)
         if not info or info.get("paused") == "1":
             continue
-        last_run_str = info.get("last_run")
+        last_run_str = info.get('last_run', '')
+        if last_run_str:
+            last_run_str = format_msk(last_run_str)
+        else:
+            last_run_str = '?'
+        # и подставляем в f-строку
         if not last_run_str:
             last_run = now - timedelta(days=1)
         else:
@@ -31,8 +38,10 @@ def process_due_tasks():
             owner_chat_id = int(info.get("chat_id", ADMIN_CHAT_ID))
             if found:
                 don_msg = get_donation_message()
+                msg_time = now.strftime("%d.%m.%Y %H:%M (МСК)")
                 send_telegram(owner_chat_id,
-                              f"🔔 <b>Новость по задаче #{tid}</b>\n{news}\n\n⏸ Задача #{tid} автоматически поставлена на паузу.{don_msg}")
+                              f"🔔 <b>Новость по задаче #{tid}</b>\n{news}\n\n⏸ Задача #{tid} автоматически поставлена на паузу.{don_msg}"
+                              f"\n\nПроверено: {msg_time}")
                 set_task_paused(tid, True)
             update_last_run(tid, now_iso)
 

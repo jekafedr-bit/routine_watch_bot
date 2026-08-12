@@ -26,6 +26,25 @@ TASK_PREFIX = "task:"
 TASK_ID_COUNTER = "task_id_counter"
 USER_TASKS_PREFIX = "user_tasks:"      # множество task_id для каждого пользователя
 
+from datetime import timezone, timedelta
+
+MSK = timezone(timedelta(hours=3))
+
+def now_msk():
+    return datetime.datetime.now(MSK)
+
+def format_msk(iso_str):
+    """Конвертирует ISO-строку с часовым поясом в читаемый вид по Москве."""
+    try:
+        dt_utc = datetime.datetime.fromisoformat(iso_str)
+        if dt_utc.tzinfo is None:
+            # Если вдруг сохранилось без зоны, считаем UTC
+            dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+        dt_msk = dt_utc.astimezone(MSK)
+        return dt_msk.strftime("%d.%m.%Y %H:%M (МСК)")
+    except Exception:
+        return iso_str
+
 # ---------- Telegram ----------
 def send_telegram(chat_id, text, parse_mode="HTML"):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -36,7 +55,7 @@ def get_next_task_id():
     return r.incr(TASK_ID_COUNTER)
 
 def save_task(task_id, query, interval_min, chat_id):
-    now = datetime.datetime.now(datetime.UTC).isoformat()
+    now = now_msk().isoformat()
     r.hset(f"{TASK_PREFIX}{task_id}", mapping={
         "query": query,
         "interval": interval_min,
@@ -131,7 +150,7 @@ def check_deepseek(query):
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
         "Content-Type": "application/json"
     }
-    today = datetime.date.today().strftime("%d.%m.%Y")
+    today = now_msk().date().strftime("%d.%m.%Y")
     prompt = (
         f"Сегодня {today}. Вот запрос пользователя: \"{query}\".\n\n"
         "Твоя задача:\n"

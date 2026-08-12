@@ -1,20 +1,22 @@
 import os
-import datetime
+
 import requests
 from flask import Flask, request
+
 from shared import (
     TOKEN, ADMIN_CHAT_ID, send_telegram,
     get_next_task_id, save_task, delete_task,
     get_user_task_ids, get_task_info, set_task_paused,
     parse_duration, migrate_legacy_tasks,
     update_last_run, check_deepseek, pause_user_tasks,
-    get_donation_message
+    get_donation_message, now_msk, format_msk
 )
 from user_management import (
     is_allowed, notify_admin_unauthorized,
     add_dynamic_user, remove_dynamic_user,
     reset_unauthorized_notify
 )
+
 app = Flask(__name__)
 
 # ---------- Обработка команд ----------
@@ -104,7 +106,7 @@ def handle_message(msg):
 
         # Немедленная проверка
         found, news = check_deepseek(query)
-        now_iso = datetime.datetime.now(datetime.UTC).isoformat()
+        now_iso = now_msk().isoformat()
         if found:
             don_msg = get_donation_message()
             send_telegram(chat_id,
@@ -158,13 +160,14 @@ def handle_message(msg):
             return
         paused = "Да" if info.get("paused") == "1" else "Нет"
         owner = info.get("chat_id", "неизвестно")
+        last_run_display = format_msk(info.get('last_run', '')) if info.get('last_run') else '?'
         send_telegram(chat_id,
             f"<b>Задача #{tid}</b>\n"
             f"Владелец: {owner}\n"
             f"Запрос: {info['query']}\n"
             f"Интервал: {info['interval']} мин\n"
             f"Пауза: {paused}\n"
-            f"Последний запуск: {info.get('last_run', '?')}",
+            f"Последний запуск: {last_run_display}",
             parse_mode="HTML")
 
     elif text.startswith("/deletetask"):
