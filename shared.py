@@ -187,8 +187,9 @@ def check_deepseek(query):
         "model": "deepseek-chat",
         "input": prompt,
         "tools": [{"type": "web_search"}],
+        "tool_choice": "required",  # заставляем модель обязательно выполнить поиск
         "temperature": 0.2,
-        "max_output_tokens": 300
+        "max_output_tokens": 500  # больше токенов для ответа после поиска
     }
 
     try:
