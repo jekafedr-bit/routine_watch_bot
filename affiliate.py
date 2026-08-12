@@ -4,6 +4,8 @@ import datetime
 import requests
 import logging
 
+from shared import get_donation_message
+
 logger = logging.getLogger(__name__)
 
 ADMITAD_TOKEN_URL = "https://api.admitad.com/token/"
