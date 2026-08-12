@@ -21,10 +21,21 @@ def get_admitad_access_token():
     if _admitad_token and _admitad_token_exp and datetime.datetime.now() < _admitad_token_exp:
         return _admitad_token
 
-    client_id = os.environ["ADMITAD_CLIENT_ID"]
-    client_secret = os.environ["ADMITAD_CLIENT_SECRET"]
+    client_id = os.environ.get("ADMITAD_CLIENT_ID")
+    client_secret = os.environ.get("ADMITAD_CLIENT_SECRET")
+
+    if not client_id:
+        logger.warning("ADMITAD_CLIENT_ID is not set")
+    else:
+        logger.info(f"ADMITAD_CLIENT_ID is set (length={len(client_id)}, prefix={client_id[:4]}...)")
+
+    if not client_secret:
+        logger.warning("ADMITAD_CLIENT_SECRET is not set")
+    else:
+        logger.info(f"ADMITAD_CLIENT_SECRET is set (length={len(client_secret)}, prefix={client_secret[:4]}...)")
+
     if not client_id or not client_secret:
-        logger.warning("ADMITAD_CLIENT_ID or ADMITAD_CLIENT_SECRET not set")
+        logger.warning("Admitad credentials incomplete")
         return None
 
     # Формируем Basic Auth: base64(client_id:client_secret)
