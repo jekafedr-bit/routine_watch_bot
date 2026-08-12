@@ -166,12 +166,14 @@ def get_all_task_ids():
 def check_deepseek(query):
     """Проверяет новость или факт через DeepSeek Responses API с web_search.
        Возвращает (True, текст_новости) или (False, None)."""
-    logger.info(f"  [DEBUG] Checking query: {query[:80]}...")
+    logger.info(f"Checking query: {query[:80]}...")
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
         "Content-Type": "application/json"
     }
+
     msk_time = now_msk().strftime("%H:%M %d.%m.%Y")
+
     prompt = (
         f"Текущее московское время: {msk_time}. Запрос пользователя: \"{query}\".\n\n"
         "Ты — ассистент, который выдаёт только результат проверки факта или поиска новости.\n"
@@ -185,10 +187,10 @@ def check_deepseek(query):
         "model": "deepseek-chat",
         "input": prompt,
         "tools": [{"type": "web_search"}],
-        "tool_choice": {"type": "web_search"},  # принудительно используем поиск
-        "temperature": 0.0,
-        "max_output_tokens": 150  # меньше токенов — меньше шанс на рассуждения
+        "temperature": 0.2,
+        "max_output_tokens": 300
     }
+
     try:
         resp = requests.post(
             "https://api.deepseek.com/v1/responses",
@@ -203,18 +205,60 @@ def check_deepseek(query):
                 if item.get("type") == "message":
                     answer = item.get("content", [{}])[0].get("text", "").strip()
                     break
-            logger.info(f"  [DEBUG] Full answer: {answer}")
-            if "ДА:" in answer:
-                news_start = answer.find("ДА:") + 3
-                news = answer[news_start:].strip().split("\n")[0]
-                return True, news
-            elif answer.startswith("ДА"):
-                news = answer[2:].strip().lstrip(": ").strip()
-                return True, news
+            logger.info(f"Full answer: {answer}")
+
+            # Проверяем формат
+            if answer.startswith("ДА:") or answer.startswith("НЕТ"):
+                if answer.startswith("ДА:"):
+                    news_start = answer.find("ДА:") + 3
+                    news = answer[news_start:].strip().split("\n")[0]
+                    return True, news
+                else:
+                    return False, None
+            else:
+                # Fallback: повторный запрос без поиска
+                logger.warning("DeepSeek returned non-compliant answer, requesting strict format fallback")
+                fallback_payload = {
+                    "model": "deepseek-chat",
+                    "input": (
+                        f"Проанализируй следующий текст и ответь строго в одном из двух форматов:\n"
+                        f"1) 'ДА: <краткая суть>' — если факт подтверждён или новость найдена.\n"
+                        f"2) 'НЕТ' — если факт не подтверждён или новостей нет.\n\n"
+                        f"Текст: {answer}\n\n"
+                        "Твой ответ должен начинаться с 'ДА:' или 'НЕТ'. Не добавляй ничего лишнего."
+                    ),
+                    "temperature": 0.0,
+                    "max_output_tokens": 200
+                }
+                try:
+                    fallback_resp = requests.post(
+                        "https://api.deepseek.com/v1/responses",
+                        headers=headers,
+                        json=fallback_payload,
+                        timeout=20
+                    )
+                    if fallback_resp.status_code == 200:
+                        fallback_data = fallback_resp.json()
+                        fallback_answer = ""
+                        for item in fallback_data.get("output", []):
+                            if item.get("type") == "message":
+                                fallback_answer = item.get("content", [{}])[0].get("text", "").strip()
+                                break
+                        logger.info(f"Fallback answer: {fallback_answer}")
+                        answer = fallback_answer
+                        if answer.startswith("ДА:"):
+                            news_start = answer.find("ДА:") + 3
+                            news = answer[news_start:].strip().split("\n")[0]
+                            return True, news
+                        elif answer.startswith("НЕТ"):
+                            return False, None
+                except Exception as e:
+                    logger.warning(f"Fallback request failed: {e}")
         else:
-            logger.info(f"  [DEBUG] Error body: {resp.text}")
+            logger.warning(f"DeepSeek API error: {resp.status_code} {resp.text}")
     except Exception as e:
-        logger.info(f"  [DEBUG] Exception: {e}")
+        logger.warning(f"DeepSeek exception: {e}")
+
     return False, None
 
 # ---------- Донаты ----------
