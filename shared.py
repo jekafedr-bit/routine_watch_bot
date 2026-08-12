@@ -187,8 +187,6 @@ def check_deepseek(query):
         "model": "deepseek-chat",
         "input": prompt,
         "tools": [{"type": "web_search"}],
-        "tool_choice": "required",
-        "reasoning": {"effort": "none"},  # отключаем рассуждения
         "temperature": 0.2,
         "max_output_tokens": 500
     }
@@ -208,6 +206,8 @@ def check_deepseek(query):
                     answer = item.get("content", [{}])[0].get("text", "").strip()
                     break
             logger.info(f"Full answer: {answer}")
+            if not answer:
+                logger.warning(f"Empty answer from DeepSeek. Full output: {data.get('output')}")
 
             # Проверяем формат
             if answer.startswith("ДА:") or answer.startswith("НЕТ"):
