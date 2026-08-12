@@ -16,7 +16,7 @@ from shared import (
 from user_management import (
     is_allowed, notify_admin_unauthorized,
     add_dynamic_user, remove_dynamic_user,
-    reset_unauthorized_notify
+    reset_unauthorized_notify, get_all_allowed_users
 )
 
 app = Flask(__name__)
@@ -44,7 +44,8 @@ def handle_message(msg):
                 ["/newtask", "/tasks"],
                 ["/taskinfo", "/pause"],
                 ["/resume", "/deletetask"],
-                ["/adduser", "/removeuser"]
+                ["/adduser", "/removeuser"],
+                ["/notify_update"]  # <-- новая кнопка
             ],
             "resize_keyboard": True,
             "one_time_keyboard": False
@@ -332,6 +333,17 @@ def handle_message(msg):
         pause_user_tasks(user_id)
         reset_unauthorized_notify(user_id)
         send_telegram(chat_id, f"✅ Пользователь {user_id} удалён из доступа, все его задачи остановлены.")
+
+    elif text.startswith("/notify_update") and chat_id == ADMIN_CHAT_ID:
+        users = get_all_allowed_users()
+        notified = 0
+        for uid in users:
+            try:
+                send_telegram(uid, "🔄 Бот был обновлён! Нажмите /start, чтобы увидеть обновлённое меню и кнопки.")
+                notified += 1
+            except Exception as e:
+                logger.warning(f"Failed to notify user {uid}: {e}")
+        send_telegram(chat_id, f"✅ Уведомление отправлено {notified} пользователям.")
 
 # ---------- Вебхук ----------
 @app.route("/webhook", methods=["POST"])

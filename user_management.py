@@ -69,3 +69,11 @@ def reset_unauthorized_notify(chat_id):
     """Удаляет ключ блокировки уведомлений, чтобы пользователь снова мог запросить доступ."""
     notify_key = f"{UNAUTHORIZED_NOTIFY_PREFIX}{chat_id}"
     r.delete(notify_key)
+
+def get_all_allowed_users():
+    """Возвращает множество всех разрешённых пользователей (статические + динамические)."""
+    all_users = set(ALLOWED_USERS)
+    dynamic_ids = r.smembers(DYNAMIC_ALLOWED_SET)
+    for uid in dynamic_ids:
+        all_users.add(int(uid.decode()))
+    return all_users
