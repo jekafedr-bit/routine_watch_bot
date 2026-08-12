@@ -25,6 +25,9 @@ def get_admitad_access_token():
         logger.warning("ADMITAD_BASIC_AUTH not set")
         return None
 
+    # Логируем только длину и первые символы для проверки корректности
+    logger.info(f"ADMITAD_BASIC_AUTH length: {len(basic_auth)}, prefix: {basic_auth[:10]}...")
+
     headers = {
         "Authorization": basic_auth,
         "Content-Type": "application/x-www-form-urlencoded"
