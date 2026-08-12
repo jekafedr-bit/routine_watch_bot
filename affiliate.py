@@ -334,3 +334,26 @@ def match_program_via_deepseek(query, programs):
     except Exception as e:
         logger.warning(f"DeepSeek program match exception: {e}")
     return None
+
+def build_promo_block(query):
+    """
+    Вызывает fetch_admitad_link и формирует партнёрский блок и донат-сообщение.
+    Если партнёрка найдена — возвращает (partner_block, "").
+    Если партнёрки нет — возвращает ("", get_donation_message()).
+    При ошибке — возвращает ("", get_donation_message()).
+    """
+    try:
+        partner = fetch_admitad_link(query)
+        if partner:
+            partner_name, partner_url = partner
+            query_preview = query[:60] + ("..." if len(query) > 60 else "")
+            partner_block = (
+                f"\n\n💡 <b>По вашему запросу</b> «{query_preview}» "
+                f"<b>рекомендуем:</b> <a href='{partner_url}'>{partner_name}</a>"
+            )
+            return partner_block, ""
+        else:
+            return "", get_donation_message()
+    except Exception as e:
+        logger.warning(f"Affiliate error in build_promo_block: {e}")
+        return "", get_donation_message()

@@ -2,7 +2,7 @@ import datetime
 from datetime import timedelta
 import logging
 
-from affiliate import fetch_admitad_link
+from affiliate import fetch_admitad_link, build_promo_block
 
 logger = logging.getLogger(__name__)
 
@@ -42,19 +42,7 @@ def process_due_tasks():
             found, news = check_deepseek(info["query"])
             owner_chat_id = int(info.get("chat_id", ADMIN_CHAT_ID))
             if found:
-                try:
-                    partner = fetch_admitad_link(info["query"])
-                    if partner:
-                        partner_name, partner_url = partner
-                        partner_block = f"\n\n🔗 <b>Спецпредложение по теме:</b> <a href='{partner_url}'>{partner_name}</a>"
-                        don_msg = ""
-                    else:
-                        partner_block = ""
-                        don_msg = get_donation_message()
-                except Exception as e:
-                    logger.warning(f"Affiliate error: {e}")
-                    partner_block = ""
-                    don_msg = get_donation_message()
+                partner_block, don_msg = build_promo_block(info["query"])
 
                 send_telegram(owner_chat_id,
                               f"🔔 <b>Новость по задаче #{tid}</b>\n{news}\n\n⏸ Задача #{tid} автоматически поставлена на паузу.{don_msg}{partner_block}")
