@@ -12,6 +12,7 @@ ADMITAD_PROGRAMS_URL = "https://api.admitad.com/programs/"
 _admitad_token = None
 _admitad_token_exp = None
 
+import base64
 
 def get_admitad_access_token():
     """Получает access token для Admitad API (кэширует на 50 минут)."""
@@ -20,32 +21,32 @@ def get_admitad_access_token():
     if _admitad_token and _admitad_token_exp and datetime.datetime.now() < _admitad_token_exp:
         return _admitad_token
 
-    basic_auth = os.environ.get("ADMITAD_BASIC_AUTH")
-    if not basic_auth:
-        logger.warning("ADMITAD_BASIC_AUTH not set")
+    client_id = os.environ.get("ADMITAD_CLIENT_ID")
+    client_secret = os.environ.get("ADMITAD_CLIENT_SECRET")
+    if not client_id or not client_secret:
+        logger.warning("ADMITAD_CLIENT_ID or ADMITAD_CLIENT_SECRET not set")
         return None
 
-    # Если строка не начинается с "Basic ", добавляем префикс автоматически
-    if not basic_auth.startswith("Basic "):
-        basic_auth = f"Basic {basic_auth}"
-
-    logger.info(f"ADMITAD_BASIC_AUTH length: {len(basic_auth)}, prefix: {basic_auth[:10]}...")
-
-    # Логируем только длину и первые символы для проверки корректности
-    logger.info(f"ADMITAD_BASIC_AUTH length: {len(basic_auth)}, prefix: {basic_auth[:10]}...")
-
+    # Формируем Basic Auth: base64(client_id:client_secret)
+    credentials = f"{client_id}:{client_secret}"
+    encoded = base64.b64encode(credentials.encode()).decode()
     headers = {
-        "Authorization": basic_auth,
+        "Authorization": f"Basic {encoded}",
         "Content-Type": "application/x-www-form-urlencoded"
     }
-    data = {"grant_type": "client_credentials"}
+
+    # Тело запроса: grant_type=client_credentials, client_id и scope
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "scope": "advcampaigns banners websites"  # минимальный набор прав
+    }
 
     try:
         resp = requests.post(ADMITAD_TOKEN_URL, headers=headers, data=data, timeout=15)
         if resp.status_code == 200:
             token_data = resp.json()
             _admitad_token = token_data["access_token"]
-            # Обновляем за 10 минут до истечения (3600 секунд)
             _admitad_token_exp = datetime.datetime.now() + datetime.timedelta(seconds=3000)
             logger.info("Admitad access token obtained")
             return _admitad_token
