@@ -35,6 +35,7 @@ TASKS_SET = "tasks"                    # оставим для обратной 
 TASK_PREFIX = "task:"
 TASK_ID_COUNTER = "task_id_counter"
 USER_TASKS_PREFIX = "user_tasks:"      # множество task_id для каждого пользователя
+PENDING_KEY = "pending_task:"
 
 from datetime import timezone, timedelta
 
@@ -228,3 +229,20 @@ def get_donation_message():
             "в поле «Получатель» введите @ekfedorov → укажите сумму и подтвердите."
         )
     return f"\n\n❤️ <b>Поддержите проект!</b>\n{donation_text}"
+
+def set_pending_task(chat_id, step, query=None):
+    """Сохраняет состояние создания задачи: step='query' или 'interval', query - текст запроса."""
+    data = {"step": step}
+    if query:
+        data["query"] = query
+    r.setex(f"{PENDING_KEY}{chat_id}", 600, json.dumps(data))
+
+def get_pending_task(chat_id):
+    """Возвращает словарь с состоянием или None."""
+    raw = r.get(f"{PENDING_KEY}{chat_id}")
+    if raw:
+        return json.loads(raw.decode())
+    return None
+
+def delete_pending_task(chat_id):
+    r.delete(f"{PENDING_KEY}{chat_id}")

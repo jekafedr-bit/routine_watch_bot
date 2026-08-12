@@ -10,7 +10,8 @@ from shared import (
     get_user_task_ids, get_task_info, set_task_paused,
     parse_duration, migrate_legacy_tasks,
     update_last_run, check_deepseek, pause_user_tasks,
-    get_donation_message, now_msk, format_msk
+    get_donation_message,
+    set_pending_task, get_pending_task, delete_pending_task, now_msk  # ← новые
 )
 from user_management import (
     is_allowed, notify_admin_unauthorized,
@@ -96,6 +97,65 @@ def handle_message(msg):
             notify_admin_unauthorized(chat_id, user_info)
         return
 
+    # ── Обработка ожидания ввода (пошаговое создание задачи) ──
+    pending = get_pending_task(chat_id)
+    if pending:
+        if text.startswith("/cancel"):
+            delete_pending_task(chat_id)
+            send_telegram(chat_id, "❌ Создание задачи отменено.")
+            return
+        step = pending.get("step")
+        if step == "query":
+            # Пользователь вводит поисковый запрос
+            if not text or text.startswith("/"):
+                send_telegram(chat_id, "📝 Пожалуйста, введите поисковый запрос. Или /cancel для отмены.")
+                return
+            set_pending_task(chat_id, "interval", query=text)
+            send_telegram(chat_id,
+                          "📝 Запрос сохранён. Теперь введите интервал проверки (например, 5 minutes, 1 hour, daily).\nДля отмены – /cancel")
+            return
+        elif step == "interval":
+            query = pending.get("query", "")
+            if not query:
+                delete_pending_task(chat_id)
+                send_telegram(chat_id, "⚠️ Ошибка: запрос не найден. Начните заново с /newtask.")
+                return
+            interval = parse_duration(text)
+            if interval is None:
+                send_telegram(chat_id,
+                              "❗ Не удалось распознать интервал. Введите, например, 5 minutes, 1 hour, daily.\nДля отмены – /cancel")
+                return
+            if interval < 5:
+                send_telegram(chat_id, "❗ Минимальный интервал — 5 минут.")
+                return
+            # Создаём задачу
+            task_id = get_next_task_id()
+            save_task(task_id, query, interval, chat_id)
+            delete_pending_task(chat_id)
+            logger.info(f"Performing immediate check for new task {task_id}...")
+            found, news = check_deepseek(query)
+            now_iso = now_msk().isoformat()
+            if found:
+                don_msg = get_donation_message()
+                send_telegram(chat_id,
+                              f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}")
+                set_task_paused(task_id, True)
+            else:
+                send_telegram(chat_id,
+                              f"✅ Задача #{task_id} создана.\nЗапрос: {query}\nИнтервал: {interval} мин.\n\n"
+                              f"🔍 Сейчас по запросу ничего не найдено. Я продолжу проверять каждые {interval} мин. и пришлю уведомление, когда появится новость.")
+            update_last_run(task_id, now_iso)
+            if chat_id != ADMIN_CHAT_ID:
+                user = msg.get("from", {})
+                username = user.get("username", user.get("first_name", str(chat_id)))
+                send_telegram(ADMIN_CHAT_ID,
+                              f"👤 Пользователь @{username} (chat_id {chat_id}) создал задачу #{task_id}:\n{query[:200]}")
+            return
+        else:
+            delete_pending_task(chat_id)
+            send_telegram(chat_id, "⚠️ Ошибка состояния. Начните заново с /newtask.")
+            return
+
         # ── Все остальные команды требуют авторизации ──
     if not is_allowed(chat_id):
         user_info = msg.get("from", {})
@@ -104,7 +164,13 @@ def handle_message(msg):
         return
 
     elif text.startswith("/newtask"):
-        # Разделяем команду и интервал
+        # Если команда в точности "/newtask" (нажата кнопка) — запускаем пошаговый опрос
+        if text.strip() == "/newtask":
+            set_pending_task(chat_id, "query")
+            send_telegram(chat_id,
+                          "📝 Введите поисковый запрос, по которому нужно отслеживать новости или проверять факт.\nДля отмены – /cancel")
+            return
+        # Иначе пробуем разобрать как команду с /every
         if "/every" not in text:
             send_telegram(chat_id,
                 "❗ Укажите интервал проверки с помощью /every.\n"
