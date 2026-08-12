@@ -142,92 +142,12 @@ def get_joined_programs():
         logger.warning(f"Get joined programs exception: {e}")
     return []
 
-
-def extract_keywords_via_deepseek(query, max_keywords=3):
-    """Извлекает ключевые слова для поиска партнёрской программы."""
-    deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
-    if not deepseek_key:
-        logger.warning("DEEPSEEK_API_KEY not set, fallback to simple extraction")
-        return []
-
-    headers = {
-        "Authorization": f"Bearer {deepseek_key}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": "deepseek-chat",
-        "input": (
-            f"Извлеки из запроса пользователя {max_keywords} ключевых слов или фраз, "
-            "которые лучше всего подходят для поиска партнёрской программы в Admitad. "
-            "Верни только ключевые слова через запятую, без пояснений.\n"
-            f"Запрос: {query}"
-        ),
-        "temperature": 0.0,
-        "max_output_tokens": 30
-    }
-    try:
-        resp = requests.post("https://api.deepseek.com/v1/responses", headers=headers, json=payload, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            answer = ""
-            for item in data.get("output", []):
-                if item.get("type") == "message":
-                    answer = item.get("content", [{}])[0].get("text", "").strip()
-                    break
-            if answer:
-                keywords = [k.strip() for k in answer.split(",") if k.strip()]
-                logger.info(f"DeepSeek extracted keywords: {keywords}")
-                return keywords
-    except Exception as e:
-        logger.warning(f"DeepSeek keyword extraction failed: {e}")
-    return []
-
 def fetch_admitad_link(query):
-    """Ищет партнёрскую программу по ключевым словам (локально), а при неудаче — через DeepSeek."""
-    # 1. Локальный поиск по ключевым словам
-    keywords = extract_keywords_via_deepseek(query)
-    if not keywords:
-        keywords = [w for w in query.split() if len(w) > 2]
-
+    """Ищет партнёрскую программу через семантический подбор DeepSeek."""
     programs = get_joined_programs()
     if not programs:
         logger.warning("No joined programs available")
         return None
-
-    for kw in keywords:
-        kw_lower = kw.lower()
-        for prog in programs:
-            # Проверяем название программы
-            name = prog.get("name", "").lower()
-            if kw_lower in name:
-                goto = prog.get("gotolink", "")
-                if goto:
-                    logger.info(f"Found affiliate program by name keyword '{kw}': {prog.get('name')}")
-                    return prog.get("name"), goto
-
-            # Проверяем алиасы (синонимы) программы
-            aliases = prog.get("name_aliases", "").lower()
-            if aliases:
-                # Разбиваем алиасы по запятым и ищем вхождение
-                alias_list = [a.strip() for a in aliases.split(",") if a.strip()]
-                for alias in alias_list:
-                    if kw_lower in alias:
-                        goto = prog.get("gotolink", "")
-                        if goto:
-                            logger.info(f"Found affiliate program by alias '{kw}' in '{prog.get('name')}': {alias}")
-                            return prog.get("name"), goto
-
-            # Проверяем категории
-            categories = prog.get("categories", [])
-            for cat in categories:
-                if kw_lower in cat.get("name", "").lower():
-                    goto = prog.get("gotolink", "")
-                    if goto:
-                        logger.info(f"Found affiliate program by category keyword '{kw}': {prog.get('name')}")
-                        return prog.get("name"), goto
-
-    # 2. Семантический подбор через DeepSeek (fallback)
-    logger.info("Local keyword search failed, trying semantic match via DeepSeek")
     return match_program_via_deepseek(query, programs)
 
 def get_program_goto_link(campaign_id):
