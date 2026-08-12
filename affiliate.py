@@ -68,38 +68,80 @@ def get_admitad_access_token():
     return None
 
 
-def fetch_admitad_link(keyword, limit=1):
-    """
-    Ищет партнёрскую программу по ключевому слову.
-    Возвращает (название, ссылку) или None.
-    """
+def fetch_admitad_link(query, limit=1):
     token = get_admitad_access_token()
     if not token:
         return None
 
     headers = {"Authorization": f"Bearer {token}"}
-    params = {
-        "q": keyword,
-        "limit": limit,
-        "has_tool": "true",          # только программы с готовыми партнёрскими ссылками
-        "language": "ru",
-        "connection_status": "active"  # только активные подключения
-    }
 
+    # Сначала пробуем ключевые слова от DeepSeek
+    keywords = extract_keywords_via_deepseek(query)
+    candidates = keywords + [query]  # добавляем исходный запрос как запасной вариант
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        params = {
+            "q": candidate,
+            "limit": limit,
+            "has_tool": "true",
+            "language": "ru",
+            "connection_status": "active"
+        }
+        try:
+            resp = requests.get(ADMITAD_PROGRAMS_URL, headers=headers, params=params, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                programs = data.get("results", [])
+                if programs:
+                    prog = programs[0]
+                    name = prog.get("name", "Партнёр")
+                    goto = prog.get("goto_link", "")
+                    if goto:
+                        logger.info(f"Found affiliate link for '{candidate}': {name} -> {goto[:60]}...")
+                        return name, goto
+            # Если 404 или пусто, пробуем следующего кандидата
+        except Exception as e:
+            logger.warning(f"Search exception for '{candidate}': {e}")
+    return None
+
+def extract_keywords_via_deepseek(query, max_keywords=3):
+    """Извлекает ключевые слова для поиска партнёрской программы."""
+    deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not deepseek_key:
+        logger.warning("DEEPSEEK_API_KEY not set, fallback to simple extraction")
+        return []
+
+    headers = {
+        "Authorization": f"Bearer {deepseek_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "deepseek-chat",
+        "input": (
+            f"Извлеки из запроса пользователя {max_keywords} ключевых слов или фраз, "
+            "которые лучше всего подходят для поиска партнёрской программы в Admitad. "
+            "Верни только ключевые слова через запятую, без пояснений.\n"
+            f"Запрос: {query}"
+        ),
+        "temperature": 0.0,
+        "max_output_tokens": 30
+    }
     try:
-        resp = requests.get(ADMITAD_PROGRAMS_URL, headers=headers, params=params, timeout=10)
+        resp = requests.post("https://api.deepseek.com/v1/responses", headers=headers, json=payload, timeout=10)
         if resp.status_code == 200:
             data = resp.json()
-            programs = data.get("results", [])
-            if programs:
-                prog = programs[0]
-                name = prog.get("name", "Партнёр")
-                goto = prog.get("goto_link", "")
-                if goto:
-                    logger.info(f"Found affiliate link for '{keyword}': {name} -> {goto[:60]}...")
-                    return name, goto
-        else:
-            logger.warning(f"Admitad search error: {resp.status_code} {resp.text}")
+            answer = ""
+            for item in data.get("output", []):
+                if item.get("type") == "message":
+                    answer = item.get("content", [{}])[0].get("text", "").strip()
+                    break
+            if answer:
+                # Разделяем по запятой и очищаем
+                keywords = [k.strip() for k in answer.split(",") if k.strip()]
+                logger.info(f"DeepSeek extracted keywords: {keywords}")
+                return keywords
     except Exception as e:
-        logger.warning(f"Admitad search exception: {e}")
-    return None
+        logger.warning(f"DeepSeek keyword extraction failed: {e}")
+    return []
