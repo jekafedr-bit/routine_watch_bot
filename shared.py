@@ -171,9 +171,9 @@ def check_deepseek(query):
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
         "Content-Type": "application/json"
     }
-    today = now_msk().date().strftime("%d.%m.%Y")
+    msk_time = now_msk().strftime("%H:%M %d.%m.%Y")
     prompt = (
-        f"Сегодня {today}. Вот запрос пользователя: \"{query}\".\n\n"
+        f"Сегодня {msk_time}. Вот запрос пользователя: \"{query}\".\n\n"
         "Твоя задача:\n"
         "- Если запрос можно проверить как факт (например, 'сегодня август', 'закон подписан'), "
         "проверь его актуальность через поиск в интернете. Если факт верен, ответь 'ДА: ' и кратко объясни. "
