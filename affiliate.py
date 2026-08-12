@@ -83,7 +83,7 @@ def fetch_admitad_link(query, limit=1):
         if not candidate:
             continue
         params = {
-            "q": candidate,
+            "search": candidate,
             "limit": limit,
             "has_tool": "true",
             "language": "ru",
