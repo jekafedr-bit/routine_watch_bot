@@ -180,7 +180,12 @@ def check_deepseek(query):
         "Формат ответа СТРОГО:\n"
         "1) 'ДА: <краткая суть>' — если факт подтверждён или новость найдена.\n"
         "2) 'НЕТ' — если факт не подтверждён или новостей нет.\n\n"
-        "Не пиши НИКАКИХ пояснений, рассуждений или вводных фраз. Начинай сразу с 'ДА:' или 'НЕТ'."
+        "Не пиши НИКАКИХ пояснений, рассуждений или вводных фраз. Начинай сразу с 'ДА:' или 'НЕТ'.\n\n"
+        "Примеры:\n"
+        "Запрос: снижение цен на авиабилеты в Японию\n"
+        "Ответ: ДА: Авиакомпания JAL объявила о снижении цен на 20%.\n"
+        "Запрос: есть ли прямые рейсы Москва-Токио?\n"
+        "Ответ: НЕТ"
     )
 
     payload = {
@@ -218,34 +223,38 @@ def check_deepseek(query):
                 else:
                     return False, None
             else:
-                # Fallback: повторный запрос без поиска
-                logger.warning("DeepSeek returned non-compliant answer, requesting strict format fallback")
+                # Fallback: используем chat/completions с принудительным поиском
+                logger.warning("DeepSeek returned non-compliant answer, falling back to chat/completions")
                 fallback_payload = {
                     "model": "deepseek-chat",
-                    "input": (
-                        f"Проанализируй следующий текст и ответь строго в одном из двух форматов:\n"
-                        f"1) 'ДА: <краткая суть>' — если факт подтверждён или новость найдена.\n"
-                        f"2) 'НЕТ' — если факт не подтверждён или новостей нет.\n\n"
-                        f"Текст: {answer}\n\n"
-                        "Твой ответ должен начинаться с 'ДА:' или 'НЕТ'. Не добавляй ничего лишнего."
-                    ),
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "Ты — ассистент, который отвечает только в формате 'ДА: <краткая суть>' или 'НЕТ'. "
+                                "Не пиши никаких вступлений, пояснений или рассуждений. "
+                                "Сразу давай ответ, используя поиск в интернете."
+                            )
+                        },
+                        {
+                            "role": "user",
+                            "content": f"Запрос: {query}"
+                        }
+                    ],
+                    "search": True,
                     "temperature": 0.0,
-                    "max_output_tokens": 200
+                    "max_tokens": 150
                 }
                 try:
                     fallback_resp = requests.post(
-                        "https://api.deepseek.com/v1/responses",
+                        "https://api.deepseek.com/v1/chat/completions",
                         headers=headers,
                         json=fallback_payload,
-                        timeout=20
+                        timeout=30
                     )
                     if fallback_resp.status_code == 200:
                         fallback_data = fallback_resp.json()
-                        fallback_answer = ""
-                        for item in fallback_data.get("output", []):
-                            if item.get("type") == "message":
-                                fallback_answer = item.get("content", [{}])[0].get("text", "").strip()
-                                break
+                        fallback_answer = fallback_data["choices"][0]["message"]["content"].strip()
                         logger.info(f"Fallback answer: {fallback_answer}")
                         answer = fallback_answer
                         if answer.startswith("ДА:"):
