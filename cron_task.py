@@ -42,18 +42,19 @@ def process_due_tasks():
             found, news = check_deepseek(info["query"])
             owner_chat_id = int(info.get("chat_id", ADMIN_CHAT_ID))
             if found:
-                don_msg = get_donation_message()
-                # Поиск партнёрской ссылки
                 try:
                     partner = fetch_admitad_link(info["query"])
                     if partner:
                         partner_name, partner_url = partner
                         partner_block = f"\n\n🔗 <b>Спецпредложение по теме:</b> <a href='{partner_url}'>{partner_name}</a>"
+                        don_msg = ""
                     else:
                         partner_block = ""
+                        don_msg = get_donation_message()
                 except Exception as e:
                     logger.warning(f"Affiliate error: {e}")
                     partner_block = ""
+                    don_msg = get_donation_message()
 
                 send_telegram(owner_chat_id,
                               f"🔔 <b>Новость по задаче #{tid}</b>\n{news}\n\n⏸ Задача #{tid} автоматически поставлена на паузу.{don_msg}{partner_block}")

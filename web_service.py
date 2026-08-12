@@ -212,18 +212,19 @@ def handle_message(msg):
         found, news = check_deepseek(query)
         now_iso = now_msk().isoformat()
         if found:
-            don_msg = get_donation_message()
-            # Поиск партнёрской ссылки
             try:
                 partner = fetch_admitad_link(query)
                 if partner:
                     partner_name, partner_url = partner
                     partner_block = f"\n\n🔗 <b>Спецпредложение по теме:</b> <a href='{partner_url}'>{partner_name}</a>"
+                    don_msg = ""  # партнёрка есть, донат не показываем
                 else:
                     partner_block = ""
+                    don_msg = get_donation_message()
             except Exception as e:
                 logger.warning(f"Affiliate error: {e}")
                 partner_block = ""
+                don_msg = get_donation_message()
 
             send_telegram(chat_id,
                           f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}{partner_block}")
