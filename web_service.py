@@ -3,6 +3,9 @@ import os
 import requests
 from flask import Flask, request
 import logging
+
+from affiliate import fetch_admitad_link
+
 logger = logging.getLogger(__name__)
 from shared import (
     TOKEN, ADMIN_CHAT_ID, send_telegram,
@@ -198,8 +201,20 @@ def handle_message(msg):
         now_iso = now_msk().isoformat()
         if found:
             don_msg = get_donation_message()
+            # Поиск партнёрской ссылки
+            try:
+                partner = fetch_admitad_link(query)
+                if partner:
+                    partner_name, partner_url = partner
+                    partner_block = f"\n\n🔗 <b>Спецпредложение по теме:</b> <a href='{partner_url}'>{partner_name}</a>"
+                else:
+                    partner_block = ""
+            except Exception as e:
+                logger.warning(f"Affiliate error: {e}")
+                partner_block = ""
+
             send_telegram(chat_id,
-                          f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}")
+                          f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}{partner_block}")
             set_task_paused(task_id, True)
         else:
             # Ничего не найдено — сообщаем и говорим о повторной проверке

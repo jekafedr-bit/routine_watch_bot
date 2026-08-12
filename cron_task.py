@@ -1,6 +1,9 @@
 import datetime
 from datetime import timedelta
 import logging
+
+from affiliate import fetch_admitad_link
+
 logger = logging.getLogger(__name__)
 
 from shared import (
@@ -40,10 +43,20 @@ def process_due_tasks():
             owner_chat_id = int(info.get("chat_id", ADMIN_CHAT_ID))
             if found:
                 don_msg = get_donation_message()
-                msg_time = now.strftime("%d.%m.%Y %H:%M (МСК)")
+                # Поиск партнёрской ссылки
+                try:
+                    partner = fetch_admitad_link(info["query"])
+                    if partner:
+                        partner_name, partner_url = partner
+                        partner_block = f"\n\n🔗 <b>Спецпредложение по теме:</b> <a href='{partner_url}'>{partner_name}</a>"
+                    else:
+                        partner_block = ""
+                except Exception as e:
+                    logger.warning(f"Affiliate error: {e}")
+                    partner_block = ""
+
                 send_telegram(owner_chat_id,
-                              f"🔔 <b>Новость по задаче #{tid}</b>\n{news}\n\n⏸ Задача #{tid} автоматически поставлена на паузу.{don_msg}"
-                              f"\n\nПроверено: {msg_time}")
+                              f"🔔 <b>Новость по задаче #{tid}</b>\n{news}\n\n⏸ Задача #{tid} автоматически поставлена на паузу.{don_msg}{partner_block}")
                 set_task_paused(tid, True)
             update_last_run(tid, now_iso)
 
