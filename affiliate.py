@@ -182,7 +182,8 @@ def extract_keywords_via_deepseek(query, max_keywords=3):
     return []
 
 def fetch_admitad_link(query):
-    """Ищет партнёрскую программу по ключевым словам (локально среди подключённых)."""
+    """Ищет партнёрскую программу по ключевым словам (локально), а при неудаче — через DeepSeek."""
+    # 1. Локальный поиск по ключевым словам (как сейчас)
     keywords = extract_keywords_via_deepseek(query)
     if not keywords:
         keywords = [w for w in query.split() if len(w) > 2]
@@ -197,20 +198,21 @@ def fetch_admitad_link(query):
         for prog in programs:
             name = prog.get("name", "").lower()
             categories = prog.get("categories", [])
-            # Поиск по названию
             if kw_lower in name:
                 goto = prog.get("gotolink", "")
                 if goto:
-                    logger.info(f"Found affiliate program by keyword '{kw}': {prog.get('name')} -> {goto[:60]}...")
+                    logger.info(f"Found affiliate program by keyword '{kw}': {prog.get('name')}")
                     return prog.get("name"), goto
-            # Поиск по категориям
             for cat in categories:
                 if kw_lower in cat.get("name", "").lower():
                     goto = prog.get("gotolink", "")
                     if goto:
-                        logger.info(f"Found affiliate program by category keyword '{kw}': {prog.get('name')} -> {goto[:60]}...")
+                        logger.info(f"Found affiliate program by category keyword '{kw}': {prog.get('name')}")
                         return prog.get("name"), goto
-    return None
+
+    # 2. Семантический подбор через DeepSeek (fallback)
+    logger.info("Local keyword search failed, trying semantic match via DeepSeek")
+    return match_program_via_deepseek(query, programs)
 
 def get_program_goto_link(campaign_id):
     """Получает goto_link для конкретной программы по её ID."""
@@ -231,4 +233,79 @@ def get_program_goto_link(campaign_id):
             logger.warning(f"Failed to get campaign {campaign_id}: {resp.status_code} {resp.text}")
     except Exception as e:
         logger.warning(f"Get campaign exception: {e}")
+    return None
+
+def match_program_via_deepseek(query, programs):
+    """
+    Просит DeepSeek выбрать наиболее подходящую партнёрскую программу из списка.
+    Возвращает (название, gotolink) или None.
+    """
+    deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not deepseek_key:
+        logger.warning("DEEPSEEK_API_KEY not set, cannot use semantic matching")
+        return None
+
+    # Формируем компактный список программ для модели
+    program_list = []
+    for p in programs:
+        name = p.get("name", "")
+        categories = ", ".join([c.get("name", "") for c in p.get("categories", []) if c.get("name")])
+        program_list.append(f"ID: {p.get('id')}, Название: {name}, Категории: {categories}")
+
+    if not program_list:
+        return None
+
+    programs_text = "\n".join(program_list)
+
+    headers = {
+        "Authorization": f"Bearer {deepseek_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "deepseek-chat",
+        "input": (
+            f"Запрос пользователя: \"{query}\"\n\n"
+            "Ниже список партнёрских программ. Выбери одну программу, которая наиболее "
+            "соответствует запросу пользователя (например, если пользователь спрашивает "
+            "про покупку iPhone, выбери магазин электроники BigGeek или похожий).\n"
+            "Если подходящей программы нет, ответь строго 'НЕТ'.\n"
+            "Если есть — ответь строго в формате: 'ID: <id>'\n\n"
+            f"{programs_text}"
+        ),
+        "temperature": 0.0,
+        "max_output_tokens": 50
+    }
+
+    try:
+        resp = requests.post("https://api.deepseek.com/v1/responses", headers=headers, json=payload, timeout=15)
+        if resp.status_code == 200:
+            data = resp.json()
+            answer = ""
+            for item in data.get("output", []):
+                if item.get("type") == "message":
+                    answer = item.get("content", [{}])[0].get("text", "").strip()
+                    break
+            logger.info(f"DeepSeek program match answer: {answer}")
+            if answer.startswith("НЕТ"):
+                return None
+            # Извлекаем id программы из ответа
+            import re
+            match = re.search(r'ID:\s*(\d+)', answer)
+            if match:
+                program_id = int(match.group(1))
+                # Находим программу в списке
+                for p in programs:
+                    if p.get("id") == program_id:
+                        goto = p.get("gotolink", "")
+                        if goto:
+                            logger.info(f"DeepSeek matched program: {p.get('name')}")
+                            return p.get("name"), goto
+                        else:
+                            return None
+            else:
+                logger.warning(f"Could not parse program ID from DeepSeek answer: {answer}")
+        else:
+            logger.warning(f"DeepSeek program match API error: {resp.status_code} {resp.text}")
+    except Exception as e:
+        logger.warning(f"DeepSeek program match exception: {e}")
     return None
