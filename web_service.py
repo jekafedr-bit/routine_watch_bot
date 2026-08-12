@@ -25,10 +25,31 @@ def handle_message(msg):
     chat_id = msg["chat"]["id"]
     text = msg.get("text", "").strip()
 
-        # ── /start доступен всем ──
+    # ── /start доступен всем ──
     if text.startswith("/start"):
+        # Клавиатура для обычного авторизованного пользователя
+        user_keyboard = {
+            "keyboard": [
+                ["/newtask", "/tasks"],
+                ["/taskinfo", "/pause"],
+                ["/resume", "/deletetask"]
+            ],
+            "resize_keyboard": True,
+            "one_time_keyboard": False
+        }
+        # Клавиатура для админа (добавлены кнопки управления пользователями)
+        admin_keyboard = {
+            "keyboard": [
+                ["/newtask", "/tasks"],
+                ["/taskinfo", "/pause"],
+                ["/resume", "/deletetask"],
+                ["/adduser", "/removeuser"]
+            ],
+            "resize_keyboard": True,
+            "one_time_keyboard": False
+        }
+
         if is_allowed(chat_id):
-            # авторизованный пользователь – полное меню
             if chat_id == ADMIN_CHAT_ID:
                 send_telegram(chat_id, (
                     "🤖 <b>Бот для отслеживания новостей</b>\n\n"
@@ -46,7 +67,7 @@ def handle_message(msg):
                     "/adduser &lt;chat_id&gt; — дать доступ пользователю\n"
                     "/removeuser &lt;chat_id&gt; — отозвать доступ (задачи пользователя встанут на паузу)\n\n"
                     "🔔 При попытке неавторизованного доступа вы получите уведомление."
-                ), parse_mode="HTML")
+                ), parse_mode="HTML", reply_markup=admin_keyboard)
             else:
                 send_telegram(chat_id, (
                     "🤖 <b>Бот для отслеживания новостей</b>\n\n"
@@ -61,9 +82,9 @@ def handle_message(msg):
                     "/taskinfo &lt;ID&gt; — инфо о задаче\n"
                     "/deletetask &lt;ID&gt; — удалить задачу\n"
                     "/pause &lt;ID&gt; /resume &lt;ID&gt; — пауза/продолжить"
-                ), parse_mode="HTML")
+                ), parse_mode="HTML", reply_markup=user_keyboard)
         else:
-            # неавторизованный пользователь – приветствие и запрос доступа
+            # неавторизованный пользователь – приветствие без клавиатуры
             send_telegram(chat_id,
                           "🤖 <b>Бот для отслеживания новостей</b>\n\n"
                           "Я помогаю следить за появлением новостей и фактов по вашим запросам.\n"

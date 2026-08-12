@@ -1,3 +1,4 @@
+import json
 import os
 import datetime
 import redis
@@ -55,9 +56,16 @@ def format_msk(iso_str):
         return iso_str
 
 # ---------- Telegram ----------
-def send_telegram(chat_id, text, parse_mode="HTML"):
+def send_telegram(chat_id, text, parse_mode="HTML", reply_markup=None):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": parse_mode})
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": parse_mode
+    }
+    if reply_markup:
+        payload["reply_markup"] = json.dumps(reply_markup)  # нужно будет import json
+    requests.post(url, json=payload)
 
 # ---------- Управление задачами ----------
 def get_next_task_id():
