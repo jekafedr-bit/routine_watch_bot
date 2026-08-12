@@ -39,7 +39,7 @@ def get_admitad_access_token():
     data = {
         "grant_type": "client_credentials",
         "client_id": client_id,
-        "scope": "advcampaigns banners websites"
+        "scope": "websites advcampaigns_for_website"
     }
 
     try:
