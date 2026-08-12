@@ -129,6 +129,9 @@ def get_joined_programs():
             data = resp.json()
             programs = data.get("results", [])
             logger.info(f"Fetched {len(programs)} joined programs")
+            # ВРЕМЕННО: логируем названия всех программ
+            for p in programs:
+                logger.info(f"Program: {p.get('name')} -> goto_link: {p.get('goto_link', '')}")
             _joined_programs_cache = programs
             _joined_programs_exp = datetime.datetime.now() + datetime.timedelta(seconds=3600)
             return programs
