@@ -4,62 +4,28 @@ import os
 import requests
 from flask import Flask, request
 
-from affiliate import build_promo_block
-
 logger = logging.getLogger(__name__)
 from shared import (
     TOKEN, ADMIN_CHAT_ID, send_telegram,
-    get_next_task_id, save_task, delete_task,
-    get_user_task_ids, get_task_info, set_task_paused,
-    parse_duration, migrate_legacy_tasks,
-    update_last_run, check_deepseek, pause_user_tasks,
-    set_pending_task, get_pending_task, delete_pending_task, now_msk, format_msk, extract_interval_from_text  # ← новые
+    get_task_info, set_task_paused,
+    delete_task,
+    pause_user_tasks,
+    set_pending_task, get_pending_task, delete_pending_task,
+    extract_interval_from_text, parse_duration,
+    migrate_legacy_tasks,
 )
 from user_management import (
     is_allowed, notify_admin_unauthorized,
     add_dynamic_user, remove_dynamic_user,
     reset_unauthorized_notify, get_all_allowed_users, remember_user, get_chat_id_by_username
 )
+from tasks import (
+    create_task_and_check, handle_newtask, handle_tasks, handle_taskinfo,
+    handle_deletetask, handle_pause, handle_resume,
+    send_tasks_inline, send_task_actions,
+)
 
 app = Flask(__name__)
-
-def create_task_and_check(chat_id, query, interval, msg):
-    """
-    Создаёт задачу, выполняет немедленную проверку, отправляет уведомление
-    пользователю и (если нужно) админу. Возвращает ничего.
-    """
-    task_id = get_next_task_id()
-    save_task(task_id, query, interval, chat_id)
-
-    logger.info(f"Performing immediate check for new task {task_id}...")
-    found, news = check_deepseek(query)
-    now_iso = now_msk().isoformat()
-
-    if found:
-        partner_block, don_msg, partner_reply_markup = build_promo_block(query)
-        send_telegram(
-            chat_id,
-            f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}{partner_block}",
-            reply_markup=partner_reply_markup
-        )
-        set_task_paused(task_id, True)
-    else:
-        send_telegram(
-            chat_id,
-            f"✅ Задача #{task_id} создана.\nЗапрос: {query}\nИнтервал: {interval} мин.\n\n"
-            f"🔍 Сейчас по запросу ничего не найдено. Я продолжу проверять каждые {interval} мин. и пришлю уведомление, когда появится новость."
-        )
-
-    update_last_run(task_id, now_iso)
-
-    # Уведомление админу, если создал не он сам
-    if chat_id != ADMIN_CHAT_ID:
-        user = msg.get("from", {})
-        username = user.get("username", user.get("first_name", str(chat_id)))
-        send_telegram(
-            ADMIN_CHAT_ID,
-            f"👤 Пользователь @{username} (chat_id {chat_id}) создал задачу #{task_id}:\n{query[:200]}"
-        )
 
 # ---------- Обработка команд ----------
 def handle_message(msg):
@@ -101,13 +67,13 @@ def handle_message(msg):
                     "• Если сразу ничего не найдено, бот будет проверять задачу с указанной периодичностью (например, каждый час или день), пока не появится новость.\n"
                     "• При обнаружении новости вы получите уведомление, и задача автоматически встанет на паузу.\n\n"
                     "<b>Команды администратора:</b>\n"
-                    "/newtask &lt;запрос&gt; /every &lt;интервал&gt; — создать задачу\n"
+                    "/newtask <запрос> /every <интервал> — создать задачу\n"
                     "/tasks — список ваших задач\n"
-                    "/taskinfo &lt;ID&gt; — инфо о любой задаче\n"
-                    "/deletetask &lt;ID&gt; — удалить свою задачу\n"
-                    "/pause &lt;ID&gt; /resume &lt;ID&gt; — пауза/продолжить\n"
-                    "/adduser &lt;chat_id или @username&gt; — дать доступ пользователю\n"
-                    "/removeuser &lt;chat_id или @username&gt; — отозвать доступ (задачи пользователя встанут на паузу)\n\n"
+                    "/taskinfo <ID> — инфо о любой задаче\n"
+                    "/deletetask <ID> — удалить свою задачу\n"
+                    "/pause <ID> /resume <ID> — пауза/продолжить\n"
+                    "/adduser <chat_id или @username> — дать доступ пользователю\n"
+                    "/removeuser <chat_id или @username> — отозвать доступ (задачи пользователя встанут на паузу)\n\n"
                     "🔔 При попытке неавторизованного доступа вы получите уведомление."
                 ), parse_mode="HTML", reply_markup=admin_keyboard)
             else:
@@ -119,11 +85,11 @@ def handle_message(msg):
                     "• Если сразу ничего не найдено, бот будет проверять задачу с указанной периодичностью (например, каждый час или день), пока не появится новость.\n"
                     "• При обнаружении новости вы получите уведомление, и задача автоматически встанет на паузу.\n\n"
                     "<b>Доступные команды:</b>\n"
-                    "/newtask &lt;запрос&gt; /every &lt;интервал&gt; — создать задачу\n"
+                    "/newtask <запрос> /every <интервал> — создать задачу\n"
                     "/tasks — список ваших задач\n"
-                    "/taskinfo &lt;ID&gt; — инфо о задаче\n"
-                    "/deletetask &lt;ID&gt; — удалить задачу\n"
-                    "/pause &lt;ID&gt; /resume &lt;ID&gt; — пауза/продолжить"
+                    "/taskinfo <ID> — инфо о задаче\n"
+                    "/deletetask <ID> — удалить задачу\n"
+                    "/pause <ID> /resume <ID> — пауза/продолжить"
                 ), parse_mode="HTML", reply_markup=user_keyboard)
         else:
             # неавторизованный пользователь – приветствие без клавиатуры
@@ -215,116 +181,22 @@ def handle_message(msg):
         return
 
     if text.startswith("/newtask"):
-        # Если команда в точности "/newtask" (нажата кнопка) — запускаем пошаговый опрос
-        if text.strip() == "/newtask":
-            set_pending_task(chat_id, "query")
-            send_telegram(chat_id,
-                          "📝 Введите поисковый запрос, по которому нужно отслеживать новости или проверять факт.\nДля отмены – /cancel")
-            return
-        # Иначе пробуем разобрать как команду с /every
-        if "/every" not in text:
-            send_telegram(chat_id,
-                "❗ Укажите интервал проверки с помощью /every.\n"
-                "Пример: /newtask снижение цен на билеты /every 1 day")
-            return
-        parts = text.split("/every", 1)
-        query = parts[0].replace("/newtask", "", 1).strip()
-        if not query:
-            send_telegram(chat_id, "❗ Укажите запрос для отслеживания.")
-            return
-        dur_str = parts[1].strip()
-        interval = parse_duration(dur_str)
-        if interval is None:
-            send_telegram(chat_id, "❗ Не понял интервал. Используйте: 5 minutes, 1 hour, daily")
-            return
-        if interval < 5:
-            send_telegram(chat_id, "❗ Минимальный интервал — 5 минут.")
-            return
-        create_task_and_check(chat_id, query, interval, msg)
+        handle_newtask(chat_id, text, msg)
 
     elif text.startswith("/tasks"):
-        ids = get_user_task_ids(chat_id)
-        if not ids:
-            send_telegram(chat_id, "У вас нет задач.")
-            return
-        lines = ["<b>📋 Ваши задачи:</b>"]
-        for tid in sorted(ids, key=lambda x: int(x)):
-            info = get_task_info(tid)
-            if not info:
-                continue
-            paused = "⏸" if info.get("paused") == "1" else "▶"
-            q = info.get("query", "")[:50]
-            interval = info.get("interval", "?")
-            lines.append(f"{paused} <b>#{tid}</b> {q}… ({interval} мин)")
-        send_telegram(chat_id, "\n".join(lines), parse_mode="HTML")
+        handle_tasks(chat_id)
 
     elif text.startswith("/taskinfo"):
-        parts = text.split()
-        if len(parts) < 2:
-            send_telegram(chat_id, "Укажи ID, например /taskinfo 1")
-            return
-        tid = parts[1]
-        info = get_task_info(tid)
-        if not info:
-            send_telegram(chat_id, "Задача не найдена.")
-            return
-        # Админ может смотреть любую задачу, остальные — только свои
-        if info.get("chat_id") != str(chat_id) and chat_id != ADMIN_CHAT_ID:
-            send_telegram(chat_id, "Это не ваша задача.")
-            return
-        paused = "Да" if info.get("paused") == "1" else "Нет"
-        owner = info.get("chat_id", "неизвестно")
-        last_run_display = format_msk(info.get('last_run', '')) if info.get('last_run') else '?'
-        send_telegram(chat_id,
-            f"<b>Задача #{tid}</b>\n"
-            f"Владелец: {owner}\n"
-            f"Запрос: {info['query']}\n"
-            f"Интервал: {info['interval']} мин\n"
-            f"Пауза: {paused}\n"
-            f"Последний запуск: {last_run_display}",
-            parse_mode="HTML")
+        handle_taskinfo(chat_id, text)
 
     elif text.startswith("/deletetask"):
-        parts = text.split()
-        if len(parts) < 2:
-            send_telegram(chat_id, "Укажи ID.")
-            return
-        tid = parts[1]
-        info = get_task_info(tid)
-        if not info:
-            send_telegram(chat_id, "Задача не найдена.")
-            return
-        if info.get("chat_id") != str(chat_id):
-            send_telegram(chat_id, "Это не ваша задача.")
-            return
-        delete_task(tid, chat_id)
-        send_telegram(chat_id, f"🗑 Задача #{tid} удалена.")
+        handle_deletetask(chat_id, text)
 
     elif text.startswith("/pause"):
-        parts = text.split()
-        if len(parts) < 2:
-            send_telegram(chat_id, "Укажи ID.")
-            return
-        tid = parts[1]
-        info = get_task_info(tid)
-        if not info or info.get("chat_id") != str(chat_id):
-            send_telegram(chat_id, "Задача не найдена или не ваша.")
-            return
-        set_task_paused(tid, True)
-        send_telegram(chat_id, f"⏸ Задача #{tid} на паузе.")
+        handle_pause(chat_id, text)
 
     elif text.startswith("/resume"):
-        parts = text.split()
-        if len(parts) < 2:
-            send_telegram(chat_id, "Укажи ID.")
-            return
-        tid = parts[1]
-        info = get_task_info(tid)
-        if not info or info.get("chat_id") != str(chat_id):
-            send_telegram(chat_id, "Задача не найдена или не ваша.")
-            return
-        set_task_paused(tid, False)
-        send_telegram(chat_id, f"▶ Задача #{tid} возобновлена.")
+        handle_resume(chat_id, text)
 
     elif text.startswith("/adduser") and chat_id == ADMIN_CHAT_ID:
         parts = text.split()
@@ -418,99 +290,6 @@ def send_main_menu(chat_id):
         ]
     }
     send_telegram(chat_id, "🏠 <b>Главное меню</b>\nВыберите действие:", parse_mode="HTML", reply_markup=keyboard)
-
-def send_tasks_inline(chat_id, page=0):
-    """Отправляет список задач пользователя с пагинацией (10 на страницу)."""
-    ids = get_user_task_ids(chat_id)
-    if not ids:
-        send_telegram(chat_id, "У вас нет задач.")
-        return
-
-    # Сортируем от новых к старым (по убыванию ID)
-    sorted_ids = sorted(ids, key=lambda x: int(x), reverse=True)
-
-    page_size = 10
-    total_pages = (len(sorted_ids) + page_size - 1) // page_size
-
-    # Корректируем страницу, если вышла за границы
-    if page < 0:
-        page = 0
-    elif page >= total_pages:
-        page = total_pages - 1
-
-    start = page * page_size
-    end = start + page_size
-    page_ids = sorted_ids[start:end]
-
-    keyboard = {"inline_keyboard": []}
-
-    for tid in page_ids:
-        info = get_task_info(tid)
-        if not info:
-            continue
-        paused = "⏸" if info.get("paused") == "1" else "▶"
-        q = info.get("query", "")[:30]
-        interval = info.get("interval", "?")
-        button_text = f"{paused} #{tid} {q}... ({interval} мин)"
-        keyboard["inline_keyboard"].append(
-            [{"text": button_text, "callback_data": f"task_{tid}"}]
-        )
-
-    # Навигационные кнопки
-    nav_row = []
-    if page > 0:
-        nav_row.append({"text": "⬅️ Назад", "callback_data": f"tasks_page_{page-1}"})
-    if page < total_pages - 1:
-        nav_row.append({"text": "➡️ Вперёд", "callback_data": f"tasks_page_{page+1}"})
-    if nav_row:
-        keyboard["inline_keyboard"].append(nav_row)
-
-    # Кнопка главного меню
-    keyboard["inline_keyboard"].append(
-        [{"text": "🏠 Главное меню", "callback_data": "menu"}]
-    )
-
-    send_telegram(
-        chat_id,
-        f"📋 <b>Ваши задачи</b> (страница {page+1}/{total_pages})\nВыберите задачу:",
-        parse_mode="HTML",
-        reply_markup=keyboard
-    )
-
-
-def send_task_actions(chat_id, task_id):
-    """Показывает информацию о задаче и кнопки действий."""
-    info = get_task_info(task_id)
-    if not info:
-        send_telegram(chat_id, "Задача не найдена.")
-        return
-
-    paused = info.get("paused") == "1"
-    status = "⏸ на паузе" if paused else "▶ активна"
-    text = (
-        f"<b>Задача #{task_id}</b>\n"
-        f"Запрос: {info['query']}\n"
-        f"Интервал: {info['interval']} мин\n"
-        f"Статус: {status}"
-    )
-
-    keyboard = {"inline_keyboard": []}
-    if paused:
-        keyboard["inline_keyboard"].append(
-            [{"text": "▶ Возобновить", "callback_data": f"resume_{task_id}"}]
-        )
-    else:
-        keyboard["inline_keyboard"].append(
-            [{"text": "⏸ Пауза", "callback_data": f"pause_{task_id}"}]
-        )
-    keyboard["inline_keyboard"].append(
-        [{"text": "🗑 Удалить", "callback_data": f"delete_{task_id}"}]
-    )
-    keyboard["inline_keyboard"].append(
-        [{"text": "🔙 Назад к списку", "callback_data": "tasks"}]
-    )
-
-    send_telegram(chat_id, text, parse_mode="HTML", reply_markup=keyboard)
 
 # ---------- Вебхук ----------
 @app.route("/webhook", methods=["POST"])
