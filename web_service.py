@@ -88,30 +88,8 @@ def handle_message(msg):
 
     # ── /start доступен всем ──
     if text.startswith("/start"):
-        # Клавиатура для обычного авторизованного пользователя
-        user_keyboard = {
-            "keyboard": [
-                ["🏠 Меню", "💬 Обратная связь"],
-                ["/newtask", "/tasks"],
-                ["/taskinfo", "/pause"],
-                ["/resume", "/deletetask"]
-            ],
-            "resize_keyboard": True,
-            "one_time_keyboard": False
-        }
-        # Клавиатура для админа
-        admin_keyboard = {
-            "keyboard": [
-                ["🏠 Меню", "💬 Обратная связь"],
-                ["/newtask", "/tasks"],
-                ["/taskinfo", "/pause"],
-                ["/resume", "/deletetask"],
-                ["/adduser", "/removeuser"],
-                ["/notify_update"]
-            ],
-            "resize_keyboard": True,
-            "one_time_keyboard": False
-        }
+        user_keyboard = get_user_keyboard()
+        admin_keyboard = get_admin_keyboard()
 
         if is_allowed(chat_id):
             if chat_id == ADMIN_CHAT_ID:
@@ -391,6 +369,32 @@ def handle_message(msg):
                 logger.warning(f"Failed to notify user {uid}: {e}")
         send_telegram(chat_id, f"✅ Уведомление отправлено {notified} пользователям.")
 
+def get_admin_keyboard():
+    return {
+        "keyboard": [
+            ["🏠 Меню", "💬 Обратная связь"],
+            ["/newtask", "/tasks"],
+            ["/taskinfo", "/pause"],
+            ["/resume", "/deletetask"],
+            ["/adduser", "/removeuser"],
+            ["/notify_update"]
+        ],
+        "resize_keyboard": True,
+        "one_time_keyboard": False
+    }
+
+def get_user_keyboard():
+    return {
+        "keyboard": [
+            ["🏠 Меню", "💬 Обратная связь"],
+            ["/newtask", "/tasks"],
+            ["/taskinfo", "/pause"],
+            ["/resume", "/deletetask"]
+        ],
+        "resize_keyboard": True,
+        "one_time_keyboard": False
+    }
+
 def send_main_menu(chat_id):
     keyboard = {
         "inline_keyboard": [
@@ -400,7 +404,7 @@ def send_main_menu(chat_id):
             [{"text": "⏸ Пауза задачи", "callback_data": "pause_task"}],
             [{"text": "▶️ Возобновить задачу", "callback_data": "resume_task"}],
             [{"text": "🗑 Удалить задачу", "callback_data": "delete_task"}],
-            [{"text": "💬 Обратная связь", "callback_data": "feedback"}],  # <-- добавили
+            [{"text": "💬 Обратная связь", "callback_data": "feedback"}],
         ]
     }
     send_telegram(chat_id, "🏠 <b>Главное меню</b>\nВыберите действие:", parse_mode="HTML", reply_markup=keyboard)
