@@ -235,14 +235,13 @@ def check_deepseek(query):
             if not answer:
                 logger.warning("Empty answer extracted from DeepSeek response")
 
-            # Проверяем формат
-            if answer.startswith("ДА:") or answer.startswith("НЕТ"):
-                if answer.startswith("ДА:"):
-                    news_start = answer.find("ДА:") + 3
-                    news = answer[news_start:].strip().split("\n")[0]
-                    return True, news
-                else:
-                    return False, None
+            # Проверяем формат: ищем "ДА:" в любом месте ответа
+            if "ДА:" in answer:
+                news_start = answer.find("ДА:") + 3
+                news = answer[news_start:].strip().split("\n")[0]
+                return True, news
+            elif answer.startswith("НЕТ"):
+                return False, None
             else:
                 # Fallback: используем chat/completions с принудительным поиском
                 logger.warning("DeepSeek returned non-compliant answer, falling back to chat/completions")
