@@ -71,6 +71,7 @@ def handle_message(msg):
     # Логируем с username
     username = user_info.get("username", "нет_username")
     logger.info(f"Received from {chat_id} (@{username}): {text[:200]}")
+
     # Обработка reply-кнопки "Меню"
     if text == "🏠 Меню":
         if is_allowed(chat_id):
@@ -78,12 +79,19 @@ def handle_message(msg):
         else:
             send_telegram(chat_id, "У вас нет доступа к меню.")
         return
+
+    # Обработка reply-кнопки "Обратная связь"
+    if text == "💬 Обратная связь":
+        set_pending_task(chat_id, "feedback")
+        send_telegram(chat_id, "📝 Пожалуйста, напишите ваше сообщение (предложение, проблему, отзыв).\nДля отмены – /cancel")
+        return
+
     # ── /start доступен всем ──
     if text.startswith("/start"):
         # Клавиатура для обычного авторизованного пользователя
         user_keyboard = {
             "keyboard": [
-                ["🏠 Меню"],  # <-- новая верхняя строка
+                ["🏠 Меню", "💬 Обратная связь"],
                 ["/newtask", "/tasks"],
                 ["/taskinfo", "/pause"],
                 ["/resume", "/deletetask"]
@@ -91,10 +99,10 @@ def handle_message(msg):
             "resize_keyboard": True,
             "one_time_keyboard": False
         }
-        # Клавиатура для админа (добавлены кнопки управления пользователями)
+        # Клавиатура для админа
         admin_keyboard = {
             "keyboard": [
-                ["🏠 Меню"],  # <-- новая верхняя строка
+                ["🏠 Меню", "💬 Обратная связь"],
                 ["/newtask", "/tasks"],
                 ["/taskinfo", "/pause"],
                 ["/resume", "/deletetask"],
@@ -120,8 +128,8 @@ def handle_message(msg):
                     "/taskinfo &lt;ID&gt; — инфо о любой задаче\n"
                     "/deletetask &lt;ID&gt; — удалить свою задачу\n"
                     "/pause &lt;ID&gt; /resume &lt;ID&gt; — пауза/продолжить\n"
-                    "/adduser &lt;chat_id&gt; — дать доступ пользователю\n"
-                    "/removeuser &lt;chat_id&gt; — отозвать доступ (задачи пользователя встанут на паузу)\n\n"
+                    "/adduser &lt;chat_id или @username&gt; — дать доступ пользователю\n"
+                    "/removeuser &lt;chat_id или @username&gt; — отозвать доступ (задачи пользователя встанут на паузу)\n\n"
                     "🔔 При попытке неавторизованного доступа вы получите уведомление."
                 ), parse_mode="HTML", reply_markup=admin_keyboard)
             else:
@@ -147,17 +155,16 @@ def handle_message(msg):
                           "Доступ предоставляется администратором.\n\n"
                           "Ваш запрос на доступ отправлен. Когда администратор одобрит заявку, вы получите уведомление."
                           , parse_mode="HTML")
-            # отправляем уведомление администратору
             user_info = msg.get("from", {})
             notify_admin_unauthorized(chat_id, user_info)
         return
 
-    # ── Обработка ожидания ввода (пошаговое создание задачи) ──
+    # ── Обработка ожидания ввода (пошаговое создание задачи, обратная связь) ──
     pending = get_pending_task(chat_id)
     if pending:
         if text.startswith("/cancel"):
             delete_pending_task(chat_id)
-            send_telegram(chat_id, "❌ Создание задачи отменено.")
+            send_telegram(chat_id, "❌ Действие отменено.")
             return
         step = pending.get("step")
         if step == "query":
@@ -187,19 +194,35 @@ def handle_message(msg):
             create_task_and_check(chat_id, query, interval, msg)
             delete_pending_task(chat_id)
             return
+        elif step == "feedback":
+            # Пользователь вводит сообщение для администратора
+            if not text or text.startswith("/"):
+                send_telegram(chat_id, "📝 Пожалуйста, введите текст сообщения. Или /cancel для отмены.")
+                return
+            delete_pending_task(chat_id)
+            user_info = msg.get("from", {})
+            username = user_info.get("username", "нет_username")
+            send_telegram(
+                ADMIN_CHAT_ID,
+                f"📩 <b>Обратная связь</b>\n"
+                f"От: @{username} (chat_id: {chat_id})\n\n"
+                f"{text}"
+            )
+            send_telegram(chat_id, "✅ Спасибо! Ваше сообщение отправлено администратору.")
+            return
         else:
             delete_pending_task(chat_id)
             send_telegram(chat_id, "⚠️ Ошибка состояния. Начните заново с /newtask.")
             return
 
-        # ── Все остальные команды требуют авторизации ──
+    # ── Все остальные команды требуют авторизации ──
     if not is_allowed(chat_id):
         user_info = msg.get("from", {})
         notify_admin_unauthorized(chat_id, user_info)
         send_telegram(chat_id, "У вас нет доступа к этому боту. Запрос администратору отправлен.")
         return
 
-    elif text.startswith("/newtask"):
+    if text.startswith("/newtask"):
         # Если команда в точности "/newtask" (нажата кнопка) — запускаем пошаговый опрос
         if text.strip() == "/newtask":
             set_pending_task(chat_id, "query")
@@ -228,7 +251,7 @@ def handle_message(msg):
         create_task_and_check(chat_id, query, interval, msg)
 
     elif text.startswith("/tasks"):
-        ids = get_user_task_ids(chat_id)   # только задачи пользователя
+        ids = get_user_task_ids(chat_id)
         if not ids:
             send_telegram(chat_id, "У вас нет задач.")
             return
@@ -282,7 +305,7 @@ def handle_message(msg):
         if info.get("chat_id") != str(chat_id):
             send_telegram(chat_id, "Это не ваша задача.")
             return
-        delete_task(tid, chat_id)   # удаляем с привязкой к пользователю
+        delete_task(tid, chat_id)
         send_telegram(chat_id, f"🗑 Задача #{tid} удалена.")
 
     elif text.startswith("/pause"):
@@ -377,6 +400,7 @@ def send_main_menu(chat_id):
             [{"text": "⏸ Пауза задачи", "callback_data": "pause_task"}],
             [{"text": "▶️ Возобновить задачу", "callback_data": "resume_task"}],
             [{"text": "🗑 Удалить задачу", "callback_data": "delete_task"}],
+            [{"text": "💬 Обратная связь", "callback_data": "feedback"}],  # <-- добавили
         ]
     }
     send_telegram(chat_id, "🏠 <b>Главное меню</b>\nВыберите действие:", parse_mode="HTML", reply_markup=keyboard)
@@ -461,6 +485,9 @@ def webhook():
 
         if data_cb == "menu":
             send_main_menu(chat_id)
+        elif data_cb == "feedback":
+            set_pending_task(chat_id, "feedback")
+            send_telegram(chat_id, "📝 Пожалуйста, напишите ваше сообщение (предложение, проблему, отзыв).\nДля отмены – /cancel")
         elif data_cb == "tasks":
             send_tasks_inline(chat_id)
         elif data_cb.startswith("task_"):
