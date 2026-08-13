@@ -65,12 +65,19 @@ def create_task_and_check(chat_id, query, interval, msg):
 def handle_message(msg):
     chat_id = msg["chat"]["id"]
     text = msg.get("text", "").strip()
-
+    # Обработка reply-кнопки "Меню"
+    if text == "🏠 Меню":
+        if is_allowed(chat_id):
+            send_main_menu(chat_id)
+        else:
+            send_telegram(chat_id, "У вас нет доступа к меню.")
+        return
     # ── /start доступен всем ──
     if text.startswith("/start"):
         # Клавиатура для обычного авторизованного пользователя
         user_keyboard = {
             "keyboard": [
+                ["🏠 Меню"],  # <-- новая верхняя строка
                 ["/newtask", "/tasks"],
                 ["/taskinfo", "/pause"],
                 ["/resume", "/deletetask"]
@@ -81,11 +88,12 @@ def handle_message(msg):
         # Клавиатура для админа (добавлены кнопки управления пользователями)
         admin_keyboard = {
             "keyboard": [
+                ["🏠 Меню"],  # <-- новая верхняя строка
                 ["/newtask", "/tasks"],
                 ["/taskinfo", "/pause"],
                 ["/resume", "/deletetask"],
                 ["/adduser", "/removeuser"],
-                ["/notify_update"]  # <-- новая кнопка
+                ["/notify_update"]
             ],
             "resize_keyboard": True,
             "one_time_keyboard": False
