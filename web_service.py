@@ -400,10 +400,6 @@ def send_main_menu(chat_id):
         "inline_keyboard": [
             [{"text": "➕ Создать задачу", "callback_data": "new_task"}],
             [{"text": "📋 Мои задачи", "callback_data": "tasks"}],
-            [{"text": "ℹ️ Информация о задаче", "callback_data": "task_info"}],
-            [{"text": "⏸ Пауза задачи", "callback_data": "pause_task"}],
-            [{"text": "▶️ Возобновить задачу", "callback_data": "resume_task"}],
-            [{"text": "🗑 Удалить задачу", "callback_data": "delete_task"}],
             [{"text": "💬 Обратная связь", "callback_data": "feedback"}],
         ]
     }
