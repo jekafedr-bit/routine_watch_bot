@@ -140,10 +140,13 @@ def handle_message(msg):
             found, news = check_deepseek(query)
             now_iso = now_msk().isoformat()
             if found:
-                partner_block, don_msg = build_promo_block(query)
+                partner_block, don_msg, partner_reply_markup = build_promo_block(query)
 
-                send_telegram(chat_id,
-                              f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}{partner_block}")
+                send_telegram(
+                    chat_id,
+                    f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}{partner_block}",
+                    reply_markup=partner_reply_markup
+                )
                 set_task_paused(task_id, True)
             else:
                 send_telegram(chat_id,
@@ -201,10 +204,13 @@ def handle_message(msg):
         found, news = check_deepseek(query)
         now_iso = now_msk().isoformat()
         if found:
-            partner_block, don_msg = build_promo_block(query)
+            partner_block, don_msg, partner_reply_markup = build_promo_block(query)
 
-            send_telegram(chat_id,
-                          f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}{partner_block}")
+            send_telegram(
+                chat_id,
+                f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}{partner_block}",
+                reply_markup=partner_reply_markup
+            )
             set_task_paused(task_id, True)
         else:
             # Ничего не найдено — сообщаем и говорим о повторной проверке

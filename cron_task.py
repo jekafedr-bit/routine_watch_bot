@@ -42,10 +42,13 @@ def process_due_tasks():
             found, news = check_deepseek(info["query"])
             owner_chat_id = int(info.get("chat_id", ADMIN_CHAT_ID))
             if found:
-                partner_block, don_msg = build_promo_block(info["query"])
+                partner_block, don_msg, partner_reply_markup = build_promo_block(info["query"])
 
-                send_telegram(owner_chat_id,
-                              f"🔔 <b>Новость по задаче #{tid}</b>\n{news}\n\n⏸ Задача #{tid} автоматически поставлена на паузу.{don_msg}{partner_block}")
+                send_telegram(
+                    owner_chat_id,
+                    f"🔔 <b>Новость по задаче #{tid}</b>\n{news}\n\n⏸ Задача #{tid} автоматически поставлена на паузу.{don_msg}{partner_block}",
+                    reply_markup=partner_reply_markup
+                )
                 set_task_paused(tid, True)
             update_last_run(tid, now_iso)
 
