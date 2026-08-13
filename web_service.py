@@ -1,10 +1,10 @@
+import logging
 import os
 
 import requests
 from flask import Flask, request
-import logging
 
-from affiliate import fetch_admitad_link, build_promo_block
+from affiliate import build_promo_block
 
 logger = logging.getLogger(__name__)
 from shared import (
@@ -13,7 +13,6 @@ from shared import (
     get_user_task_ids, get_task_info, set_task_paused,
     parse_duration, migrate_legacy_tasks,
     update_last_run, check_deepseek, pause_user_tasks,
-    get_donation_message,
     set_pending_task, get_pending_task, delete_pending_task, now_msk, format_msk  # ← новые
 )
 from user_management import (
@@ -23,6 +22,44 @@ from user_management import (
 )
 
 app = Flask(__name__)
+
+def create_task_and_check(chat_id, query, interval, msg):
+    """
+    Создаёт задачу, выполняет немедленную проверку, отправляет уведомление
+    пользователю и (если нужно) админу. Возвращает ничего.
+    """
+    task_id = get_next_task_id()
+    save_task(task_id, query, interval, chat_id)
+
+    logger.info(f"Performing immediate check for new task {task_id}...")
+    found, news = check_deepseek(query)
+    now_iso = now_msk().isoformat()
+
+    if found:
+        partner_block, don_msg, partner_reply_markup = build_promo_block(query)
+        send_telegram(
+            chat_id,
+            f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}{partner_block}",
+            reply_markup=partner_reply_markup
+        )
+        set_task_paused(task_id, True)
+    else:
+        send_telegram(
+            chat_id,
+            f"✅ Задача #{task_id} создана.\nЗапрос: {query}\nИнтервал: {interval} мин.\n\n"
+            f"🔍 Сейчас по запросу ничего не найдено. Я продолжу проверять каждые {interval} мин. и пришлю уведомление, когда появится новость."
+        )
+
+    update_last_run(task_id, now_iso)
+
+    # Уведомление админу, если создал не он сам
+    if chat_id != ADMIN_CHAT_ID:
+        user = msg.get("from", {})
+        username = user.get("username", user.get("first_name", str(chat_id)))
+        send_telegram(
+            ADMIN_CHAT_ID,
+            f"👤 Пользователь @{username} (chat_id {chat_id}) создал задачу #{task_id}:\n{query[:200]}"
+        )
 
 # ---------- Обработка команд ----------
 def handle_message(msg):
@@ -132,32 +169,9 @@ def handle_message(msg):
             if interval < 5:
                 send_telegram(chat_id, "❗ Минимальный интервал — 5 минут.")
                 return
-            # Создаём задачу
-            task_id = get_next_task_id()
-            save_task(task_id, query, interval, chat_id)
+            # Создаём задачу и выполняем немедленную проверку
+            create_task_and_check(chat_id, query, interval, msg)
             delete_pending_task(chat_id)
-            logger.info(f"Performing immediate check for new task {task_id}...")
-            found, news = check_deepseek(query)
-            now_iso = now_msk().isoformat()
-            if found:
-                partner_block, don_msg, partner_reply_markup = build_promo_block(query)
-
-                send_telegram(
-                    chat_id,
-                    f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}{partner_block}",
-                    reply_markup=partner_reply_markup
-                )
-                set_task_paused(task_id, True)
-            else:
-                send_telegram(chat_id,
-                              f"✅ Задача #{task_id} создана.\nЗапрос: {query}\nИнтервал: {interval} мин.\n\n"
-                              f"🔍 Сейчас по запросу ничего не найдено. Я продолжу проверять каждые {interval} мин. и пришлю уведомление, когда появится новость.")
-            update_last_run(task_id, now_iso)
-            if chat_id != ADMIN_CHAT_ID:
-                user = msg.get("from", {})
-                username = user.get("username", user.get("first_name", str(chat_id)))
-                send_telegram(ADMIN_CHAT_ID,
-                              f"👤 Пользователь @{username} (chat_id {chat_id}) создал задачу #{task_id}:\n{query[:200]}")
             return
         else:
             delete_pending_task(chat_id)
@@ -197,36 +211,7 @@ def handle_message(msg):
         if interval < 5:
             send_telegram(chat_id, "❗ Минимальный интервал — 5 минут.")
             return
-        task_id = get_next_task_id()
-        save_task(task_id, query, interval, chat_id)
-
-        # Немедленная проверка
-        found, news = check_deepseek(query)
-        now_iso = now_msk().isoformat()
-        if found:
-            partner_block, don_msg, partner_reply_markup = build_promo_block(query)
-
-            send_telegram(
-                chat_id,
-                f"🔔 <b>Сразу нашлась новость по задаче #{task_id}:</b>\n{news}\n\n⏸ Задача поставлена на паузу.{don_msg}{partner_block}",
-                reply_markup=partner_reply_markup
-            )
-            set_task_paused(task_id, True)
-        else:
-            # Ничего не найдено — сообщаем и говорим о повторной проверке
-            send_telegram(chat_id,
-                          f"✅ Задача #{task_id} создана.\nЗапрос: {query}\nИнтервал: {interval} мин.\n\n"
-                          f"🔍 Сейчас по запросу ничего не найдено. Я продолжу проверять каждые {interval} мин. и пришлю уведомление, когда появится новость.")
-        update_last_run(task_id, now_iso)
-
-        # Уведомление админу, если задачу создал не он сам
-        if chat_id != ADMIN_CHAT_ID:
-            user = msg.get("from", {})
-            username = user.get("username", user.get("first_name", str(chat_id)))
-            send_telegram(
-                ADMIN_CHAT_ID,
-                f"👤 Пользователь @{username} (chat_id {chat_id}) создал задачу #{task_id}:\n{query[:200]}"
-            )
+        create_task_and_check(chat_id, query, interval, msg)
 
     elif text.startswith("/tasks"):
         ids = get_user_task_ids(chat_id)   # только задачи пользователя

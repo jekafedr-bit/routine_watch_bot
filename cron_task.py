@@ -1,16 +1,15 @@
 import datetime
-from datetime import timedelta
 import logging
+from datetime import timedelta
 
-from affiliate import fetch_admitad_link, build_promo_block
+from affiliate import build_promo_block
 
 logger = logging.getLogger(__name__)
 
 from shared import (
     ADMIN_CHAT_ID, send_telegram,
     get_task_info, update_last_run, set_task_paused,
-    get_all_task_ids, check_deepseek, get_donation_message,
-    now_msk, format_msk
+    get_all_task_ids, check_deepseek, now_msk, format_msk
 )
 
 

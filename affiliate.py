@@ -1,10 +1,9 @@
-import os
 import base64
 import datetime
-import requests
 import logging
+import os
 
-from shared import get_donation_message
+import requests
 
 logger = logging.getLogger(__name__)
 
