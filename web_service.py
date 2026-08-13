@@ -18,7 +18,7 @@ from shared import (
 from user_management import (
     is_allowed, notify_admin_unauthorized,
     add_dynamic_user, remove_dynamic_user,
-    reset_unauthorized_notify, get_all_allowed_users
+    reset_unauthorized_notify, get_all_allowed_users, remember_user, get_chat_id_by_username
 )
 
 app = Flask(__name__)
@@ -65,6 +65,12 @@ def create_task_and_check(chat_id, query, interval, msg):
 def handle_message(msg):
     chat_id = msg["chat"]["id"]
     text = msg.get("text", "").strip()
+    user_info = msg.get("from", {})
+    # Сохраняем username
+    remember_user(chat_id, user_info)
+    # Логируем с username
+    username = user_info.get("username", "нет_username")
+    logger.info(f"Received from {chat_id} (@{username}): {text[:200]}")
     # Обработка reply-кнопки "Меню"
     if text == "🏠 Меню":
         if is_allowed(chat_id):
@@ -308,16 +314,23 @@ def handle_message(msg):
     elif text.startswith("/adduser") and chat_id == ADMIN_CHAT_ID:
         parts = text.split()
         if len(parts) < 2:
-            send_telegram(chat_id, "Укажите chat_id пользователя, например /adduser 123456789")
+            send_telegram(chat_id, "Укажите chat_id или @username, например: /adduser 123456789 или /adduser @user")
             return
-        try:
-            new_user_id = int(parts[1])
-        except ValueError:
-            send_telegram(chat_id, "Неверный формат ID.")
-            return
+        target = parts[1]
+        new_user_id = None
+        # Если введён @username, ищем chat_id
+        if target.startswith('@') or not target.isdigit():
+            target_username = target.lstrip('@')
+            new_user_id = get_chat_id_by_username(target_username)
+            if not new_user_id:
+                send_telegram(chat_id,
+                              f"Не найден пользователь с username @{target_username}. Попросите его написать боту /start, чтобы я его запомнил.")
+                return
+        else:
+            new_user_id = int(target)
+
         add_dynamic_user(new_user_id)
-        send_telegram(chat_id, f"✅ Пользователь {new_user_id} добавлен в динамический доступ.")
-        # Уведомим самого пользователя, если бот может ему написать (необязательно)
+        send_telegram(chat_id, f"✅ Пользователь {target} добавлен в динамический доступ (chat_id: {new_user_id}).")
         try:
             send_telegram(new_user_id, "✅ Администратор предоставил вам доступ к боту. Можете начинать работу.")
         except:
@@ -326,17 +339,23 @@ def handle_message(msg):
     elif text.startswith("/removeuser") and chat_id == ADMIN_CHAT_ID:
         parts = text.split()
         if len(parts) < 2:
-            send_telegram(chat_id, "Укажите chat_id пользователя, например /removeuser 123456789")
+            send_telegram(chat_id, "Укажите chat_id или @username, например: /removeuser 123456789 или /removeuser @user")
             return
-        try:
-            user_id = int(parts[1])
-        except ValueError:
-            send_telegram(chat_id, "Неверный формат ID.")
-            return
+        target = parts[1]
+        user_id = None
+        if target.startswith('@') or not target.isdigit():
+            target_username = target.lstrip('@')
+            user_id = get_chat_id_by_username(target_username)
+            if not user_id:
+                send_telegram(chat_id, f"Не найден пользователь с username @{target_username}.")
+                return
+        else:
+            user_id = int(target)
+
         remove_dynamic_user(user_id)
         pause_user_tasks(user_id)
         reset_unauthorized_notify(user_id)
-        send_telegram(chat_id, f"✅ Пользователь {user_id} удалён из доступа, все его задачи остановлены.")
+        send_telegram(chat_id, f"✅ Пользователь {target} удалён из доступа, все его задачи остановлены.")
 
     elif text.startswith("/notify_update") and chat_id == ADMIN_CHAT_ID:
         users = get_all_allowed_users()

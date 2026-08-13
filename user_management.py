@@ -77,3 +77,21 @@ def get_all_allowed_users():
     for uid in dynamic_ids:
         all_users.add(int(uid.decode()))
     return all_users
+
+def remember_user(chat_id, user_info):
+    """Сохраняет username пользователя в Redis для последующего поиска по username."""
+    username = user_info.get("username")
+    if username:
+        username_lower = username.lower().lstrip('@')
+        # Сохраняем маппинг username -> chat_id
+        r.set(f"username:{username_lower}", chat_id)
+        # Также можно сохранить chat_id -> username
+        r.set(f"user_name:{chat_id}", username_lower)
+
+def get_chat_id_by_username(username):
+    """Ищет chat_id по username (сохранённому ранее)."""
+    username_lower = username.lstrip('@').lower()
+    chat_id = r.get(f"username:{username_lower}")
+    if chat_id:
+        return int(chat_id)
+    return None
