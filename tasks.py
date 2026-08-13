@@ -8,6 +8,7 @@ from shared import (
     parse_duration,
     update_last_run, check_deepseek,
     now_msk, format_msk, set_pending_task,
+    get_task_list_state, set_task_list_state,
 )
 
 logger = logging.getLogger(__name__)
@@ -170,18 +171,43 @@ def handle_resume(chat_id, text):
     send_telegram(chat_id, f"▶ Задача #{tid} возобновлена.")
 
 
-def send_tasks_inline(chat_id, page=0):
-    """Отправляет список задач пользователя с пагинацией (10 на страницу)."""
+def send_tasks_inline(chat_id, page=0, filter_state=None, search=None):
+    """Отправляет список задач пользователя с пагинацией, фильтром и поиском."""
+    state = get_task_list_state(chat_id)
+    if filter_state is None:
+        filter_state = state.get("filter", "all")
+    if search is None:
+        search = state.get("search", "")
+
+    # Сохраняем состояние фильтра и поиска
+    set_task_list_state(chat_id, filter_state, search)
+
     ids = get_user_task_ids(chat_id)
     if not ids:
         send_telegram(chat_id, "У вас нет задач.")
         return
 
+    # Отбираем и сортируем задачи по фильтру и поисковому запросу
+    filtered = []
+    for tid in ids:
+        info = get_task_info(tid)
+        if not info:
+            continue
+        paused = info.get("paused") == "1"
+        if filter_state == "active" and paused:
+            continue
+        if filter_state == "paused" and not paused:
+            continue
+        query_lower = info.get("query", "").lower()
+        if search and search.lower() not in query_lower:
+            continue
+        filtered.append((tid, info, paused))
+
     # Сортируем от новых к старым (по убыванию ID)
-    sorted_ids = sorted(ids, key=lambda x: int(x), reverse=True)
+    filtered.sort(key=lambda x: int(x[0]), reverse=True)
 
     page_size = 10
-    total_pages = (len(sorted_ids) + page_size - 1) // page_size
+    total_pages = max(1, (len(filtered) + page_size - 1) // page_size)
 
     # Корректируем страницу, если вышла за границы
     if page < 0:
@@ -191,20 +217,40 @@ def send_tasks_inline(chat_id, page=0):
 
     start = page * page_size
     end = start + page_size
-    page_ids = sorted_ids[start:end]
+    page_items = filtered[start:end]
 
     keyboard = {"inline_keyboard": []}
 
-    for tid in page_ids:
-        info = get_task_info(tid)
-        if not info:
-            continue
-        paused = "⏸" if info.get("paused") == "1" else "▶"
+    for tid, info, paused in page_items:
+        status_icon = "⏸" if paused else "▶"
         q = info.get("query", "")[:30]
         interval = info.get("interval", "?")
-        button_text = f"{paused} #{tid} {q}... ({interval} мин)"
+        button_text = f"{status_icon} #{tid} {q}... ({interval} мин)"
         keyboard["inline_keyboard"].append(
             [{"text": button_text, "callback_data": f"task_{tid}"}]
+        )
+
+    # Кнопки фильтрации
+    filter_row = []
+    if filter_state == "active":
+        filter_row.append({"text": "✅ Все", "callback_data": "tasks_filter_all"})
+        filter_row.append({"text": "⏸ На паузе", "callback_data": "tasks_filter_paused"})
+    elif filter_state == "paused":
+        filter_row.append({"text": "✅ Все", "callback_data": "tasks_filter_all"})
+        filter_row.append({"text": "▶ Активные", "callback_data": "tasks_filter_active"})
+    else:
+        filter_row.append({"text": "▶ Активные", "callback_data": "tasks_filter_active"})
+        filter_row.append({"text": "⏸ На паузе", "callback_data": "tasks_filter_paused"})
+    keyboard["inline_keyboard"].append(filter_row)
+
+    # Кнопки поиска
+    search_label = "🔍 Поиск" if not search else f"🔍 Поиск: {search[:15]}"
+    keyboard["inline_keyboard"].append(
+        [{"text": search_label, "callback_data": "tasks_search"}]
+    )
+    if search:
+        keyboard["inline_keyboard"].append(
+            [{"text": "✖ Сбросить поиск", "callback_data": "tasks_search_clear"}]
         )
 
     # Навигационные кнопки
@@ -221,9 +267,21 @@ def send_tasks_inline(chat_id, page=0):
         [{"text": "🏠 Главное меню", "callback_data": "menu"}]
     )
 
+    # Заголовок
+    if not filtered:
+        title = "📋 <b>Ничего не найдено.</b>"
+    else:
+        title = "📋 <b>Ваши задачи</b>"
+        if filter_state == "active":
+            title += " — активные"
+        elif filter_state == "paused":
+            title += " — на паузе"
+        if search:
+            title += f" (поиск: {search})"
+
     send_telegram(
         chat_id,
-        f"📋 <b>Ваши задачи</b> (страница {page+1}/{total_pages})\nВыберите задачу:",
+        f"{title}\nСтраница {page+1}/{total_pages}.",
         parse_mode="HTML",
         reply_markup=keyboard
     )

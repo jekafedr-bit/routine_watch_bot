@@ -103,7 +103,7 @@ def handle_message(msg):
             notify_admin_unauthorized(chat_id, user_info)
         return
 
-    # ── Обработка ожидания ввода (пошаговое создание задачи, обратная связь) ──
+    # ── Обработка ожидания ввода (пошаговое создание задачи, поиск, обратная связь) ──
     pending = get_pending_task(chat_id)
     if pending:
         if text.startswith("/cancel"):
@@ -151,6 +151,14 @@ def handle_message(msg):
             # Создаём задачу и выполняем немедленную проверку
             create_task_and_check(chat_id, query, interval, msg)
             delete_pending_task(chat_id)
+            return
+        elif step == "task_search":
+            # Пользователь вводит текст для поиска среди задач
+            if not text or text.startswith("/"):
+                send_telegram(chat_id, "📝 Введите текст для поиска среди ваших задач. Или /cancel для отмены.")
+                return
+            delete_pending_task(chat_id)
+            send_tasks_inline(chat_id, search=text)
             return
         elif step == "feedback":
             # Пользователь вводит сообщение для администратора
@@ -323,6 +331,17 @@ def webhook():
         elif data_cb.startswith("tasks_page_"):
             page = int(data_cb.split("_")[-1])
             send_tasks_inline(chat_id, page)
+        elif data_cb == "tasks_filter_all":
+            send_tasks_inline(chat_id, filter_state="all")
+        elif data_cb == "tasks_filter_active":
+            send_tasks_inline(chat_id, filter_state="active")
+        elif data_cb == "tasks_filter_paused":
+            send_tasks_inline(chat_id, filter_state="paused")
+        elif data_cb == "tasks_search":
+            set_pending_task(chat_id, "task_search")
+            send_telegram(chat_id, "📝 Введите текст для поиска среди ваших задач.\nДля отмены – /cancel")
+        elif data_cb == "tasks_search_clear":
+            send_tasks_inline(chat_id, search="")
         elif data_cb == "confirm_interval_yes":
             pending = get_pending_task(chat_id)
             if pending and pending.get("step") == "confirm_interval":

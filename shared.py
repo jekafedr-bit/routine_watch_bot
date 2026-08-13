@@ -38,6 +38,7 @@ TASK_PREFIX = "task:"
 TASK_ID_COUNTER = "task_id_counter"
 USER_TASKS_PREFIX = "user_tasks:"      # множество task_id для каждого пользователя
 PENDING_KEY = "pending_task:"
+TASK_LIST_STATE_PREFIX = "task_list_state:"
 
 from datetime import timezone, timedelta
 
@@ -317,6 +318,16 @@ def set_pending_task(chat_id, step, query=None, interval=None):
         data["interval"] = interval
     r.setex(f"{PENDING_KEY}{chat_id}", 600, json.dumps(data))
 
+def get_pending_task(chat_id):
+    """Возвращает словарь с состоянием или None."""
+    raw = r.get(f"{PENDING_KEY}{chat_id}")
+    if raw:
+        return json.loads(raw.decode())
+    return None
+
+def delete_pending_task(chat_id):
+    r.delete(f"{PENDING_KEY}{chat_id}")
+
 def extract_interval_from_text(text):
     """Извлекает интервал в минутах из фраз 'через 5 минут', 'каждые 10 минут', 'каждый час'."""
     text_lower = text.lower()
@@ -343,12 +354,15 @@ def extract_interval_from_text(text):
 
     return None
 
-def get_pending_task(chat_id):
-    """Возвращает словарь с состоянием или None."""
-    raw = r.get(f"{PENDING_KEY}{chat_id}")
+# ---------- Состояние списка задач (фильтр + поиск) ----------
+def set_task_list_state(chat_id, filter_state="all", search=""):
+    """Сохраняет состояние фильтра и поискового запроса списка задач."""
+    data = {"filter": filter_state, "search": search}
+    r.setex(f"{TASK_LIST_STATE_PREFIX}{chat_id}", 3600, json.dumps(data))
+
+def get_task_list_state(chat_id):
+    """Возвращает словарь состояния списка задач или дефолтное состояние."""
+    raw = r.get(f"{TASK_LIST_STATE_PREFIX}{chat_id}")
     if raw:
         return json.loads(raw.decode())
-    return None
-
-def delete_pending_task(chat_id):
-    r.delete(f"{PENDING_KEY}{chat_id}")
+    return {"filter": "all", "search": ""}
