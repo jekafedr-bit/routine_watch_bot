@@ -189,37 +189,93 @@ def check_deepseek(query):
     )
 
     payload = {
-        "model": "deepseek-v4-flash",   # ключевое изменение
-        "instructions": prompt,
-        "input": f"Запрос: {query}",
+        "model": "deepseek-chat",
+        "input": prompt,
         "tools": [{"type": "web_search"}],
-        "tool_choice": {"type": "web_search"},   # принудительно вызываем поиск
-        "temperature": 0.0,
-        "max_output_tokens": 200
+        "temperature": 0.2,
+        "max_output_tokens": 500
     }
+
+    # Логируем то, что отправляем (без ключей)
+    logger.info(f"DeepSeek request payload: model={payload['model']}, temperature={payload['temperature']}, "
+                f"max_output_tokens={payload['max_output_tokens']}, prompt_preview={prompt[:120]}...")
 
     try:
         resp = requests.post(
-            "https://api.deepseek.com/responses",   # без /v1
+            "https://api.deepseek.com/v1/responses",
             headers=headers,
             json=payload,
             timeout=60
         )
+        # Логируем статус и часть ответа
+        logger.info(f"DeepSeek response status: {resp.status_code}")
         if resp.status_code == 200:
             data = resp.json()
-            answer = data.get("output_text", "").strip()  # у Responses API есть поле output_text
-            logger.info(f"Full answer: {answer}")
+            # Логируем полный JSON (можно обрезать, если слишком большой)
+            logger.info(f"DeepSeek full response: {json.dumps(data, ensure_ascii=False)[:2000]}")
+            answer = ""
+            for item in data.get("output", []):
+                if item.get("type") == "message":
+                    answer = item.get("content", [{}])[0].get("text", "").strip()
+                    break
+            logger.info(f"Extracted answer: {answer}")
+            if not answer:
+                logger.warning("Empty answer extracted from DeepSeek response")
 
-            if answer.startswith("ДА:"):
-                news_start = answer.find("ДА:") + 3
-                news = answer[news_start:].strip().split("\n")[0]
-                return True, news
-            elif answer.startswith("НЕТ"):
-                return False, None
+            # Проверяем формат
+            if answer.startswith("ДА:") or answer.startswith("НЕТ"):
+                if answer.startswith("ДА:"):
+                    news_start = answer.find("ДА:") + 3
+                    news = answer[news_start:].strip().split("\n")[0]
+                    return True, news
+                else:
+                    return False, None
             else:
-                # Если ответ не соответствует формату, возвращаем None (позже можно добавить fallback)
-                logger.warning(f"Non-compliant answer: {answer}")
-                return False, None
+                # Fallback: используем chat/completions с принудительным поиском
+                logger.warning("DeepSeek returned non-compliant answer, falling back to chat/completions")
+                fallback_payload = {
+                    "model": "deepseek-chat",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "Ты — ассистент, который отвечает только в формате 'ДА: <краткая суть>' или 'НЕТ'. "
+                                "Не пиши никаких вступлений, пояснений или рассуждений. "
+                                "Сразу давай ответ, используя поиск в интернете."
+                            )
+                        },
+                        {
+                            "role": "user",
+                            "content": f"Запрос: {query}"
+                        }
+                    ],
+                    "search": True,
+                    "temperature": 0.0,
+                    "max_tokens": 150
+                }
+                logger.info(f"Fallback request payload: {json.dumps(fallback_payload, ensure_ascii=False)[:500]}")
+                try:
+                    fallback_resp = requests.post(
+                        "https://api.deepseek.com/v1/chat/completions",
+                        headers=headers,
+                        json=fallback_payload,
+                        timeout=30
+                    )
+                    logger.info(f"Fallback response status: {fallback_resp.status_code}")
+                    if fallback_resp.status_code == 200:
+                        fallback_data = fallback_resp.json()
+                        logger.info(f"Fallback full response: {json.dumps(fallback_data, ensure_ascii=False)[:2000]}")
+                        fallback_answer = fallback_data["choices"][0]["message"]["content"].strip()
+                        logger.info(f"Fallback answer: {fallback_answer}")
+                        answer = fallback_answer
+                        if answer.startswith("ДА:"):
+                            news_start = answer.find("ДА:") + 3
+                            news = answer[news_start:].strip().split("\n")[0]
+                            return True, news
+                        elif answer.startswith("НЕТ"):
+                            return False, None
+                except Exception as e:
+                    logger.warning(f"Fallback request failed: {e}")
         else:
             logger.warning(f"DeepSeek API error: {resp.status_code} {resp.text}")
     except Exception as e:
