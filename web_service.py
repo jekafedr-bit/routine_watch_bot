@@ -485,9 +485,14 @@ def webhook():
 
         if data_cb == "menu":
             send_main_menu(chat_id)
+        elif data_cb == "new_task":
+            set_pending_task(chat_id, "query")
+            send_telegram(chat_id,
+                          "📝 Введите поисковый запрос, по которому нужно отслеживать новости или проверять факт.\nДля отмены – /cancel")
         elif data_cb == "feedback":
             set_pending_task(chat_id, "feedback")
-            send_telegram(chat_id, "📝 Пожалуйста, напишите ваше сообщение (предложение, проблему, отзыв).\nДля отмены – /cancel")
+            send_telegram(chat_id,
+                          "📝 Пожалуйста, напишите ваше сообщение (предложение, проблему, отзыв).\nДля отмены – /cancel")
         elif data_cb == "tasks":
             send_tasks_inline(chat_id)
         elif data_cb.startswith("task_"):
@@ -499,7 +504,7 @@ def webhook():
             if info and info.get("chat_id") == str(chat_id):
                 set_task_paused(task_id, True)
                 send_telegram(chat_id, f"⏸ Задача #{task_id} поставлена на паузу.")
-                send_task_actions(chat_id, task_id)  # обновлённое меню
+                send_task_actions(chat_id, task_id)
             else:
                 send_telegram(chat_id, "Задача не найдена или не ваша.")
         elif data_cb.startswith("resume_"):
@@ -517,7 +522,7 @@ def webhook():
             if info and info.get("chat_id") == str(chat_id):
                 delete_task(task_id, chat_id)
                 send_telegram(chat_id, f"🗑 Задача #{task_id} удалена.")
-                send_tasks_inline(chat_id)  # обновлённый список
+                send_tasks_inline(chat_id)
             else:
                 send_telegram(chat_id, "Задача не найдена или не ваша.")
         return "ok"
