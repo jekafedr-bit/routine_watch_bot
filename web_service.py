@@ -374,8 +374,20 @@ def webhook():
             set_pending_task(chat_id, "query")
             send_telegram(chat_id, "📝 Введите поисковый запрос...", reply_markup=None)
         elif data_cb == "tasks":
-            # Можно вызвать обработчик /tasks, но проще отправить команду
-            send_telegram(chat_id, "Используйте команду /tasks или кнопку.", reply_markup=None)
+            ids = get_user_task_ids(chat_id)  # только задачи этого пользователя
+            if not ids:
+                send_telegram(chat_id, "У вас нет задач.")
+            else:
+                lines = ["<b>📋 Ваши задачи:</b>"]
+                for tid in sorted(ids, key=lambda x: int(x)):
+                    info = get_task_info(tid)
+                    if not info:
+                        continue
+                    paused = "⏸" if info.get("paused") == "1" else "▶"
+                    q = info.get("query", "")[:50]
+                    interval = info.get("interval", "?")
+                    lines.append(f"{paused} <b>#{tid}</b> {q}… ({interval} мин)")
+                send_telegram(chat_id, "\n".join(lines), parse_mode="HTML")
         # ... и другие кнопки
         return "ok"
 
