@@ -13,7 +13,7 @@ from shared import (
     get_user_task_ids, get_task_info, set_task_paused,
     parse_duration, migrate_legacy_tasks,
     update_last_run, check_deepseek, pause_user_tasks,
-    set_pending_task, get_pending_task, delete_pending_task, now_msk, format_msk  # ← новые
+    set_pending_task, get_pending_task, delete_pending_task, now_msk, format_msk, extract_interval_from_text  # ← новые
 )
 from user_management import (
     is_allowed, notify_admin_unauthorized,
