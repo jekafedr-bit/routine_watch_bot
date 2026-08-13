@@ -213,11 +213,24 @@ def check_deepseek(query):
             data = resp.json()
             # Логируем полный JSON (можно обрезать, если слишком большой)
             logger.info(f"DeepSeek full response: {json.dumps(data, ensure_ascii=False)[:2000]}")
-            answer = ""
-            for item in data.get("output", []):
-                if item.get("type") == "message":
-                    answer = item.get("content", [{}])[0].get("text", "").strip()
-                    break
+            # Пытаемся взять output_text (если есть)
+            answer = data.get("output_text", "").strip()
+            if not answer:
+                # Ищем сообщение с phase "final_answer"
+                for item in data.get("output", []):
+                    if item.get("type") == "message" and item.get("phase") == "final_answer":
+                        content = item.get("content", [])
+                        if content:
+                            answer = content[0].get("text", "").strip()
+                            break
+            if not answer:
+                # Если не нашли, берём последнее сообщение
+                for item in reversed(data.get("output", [])):
+                    if item.get("type") == "message":
+                        content = item.get("content", [])
+                        if content:
+                            answer = content[0].get("text", "").strip()
+                            break
             logger.info(f"Extracted answer: {answer}")
             if not answer:
                 logger.warning("Empty answer extracted from DeepSeek response")
