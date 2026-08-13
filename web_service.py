@@ -146,14 +146,28 @@ def handle_message(msg):
             return
         step = pending.get("step")
         if step == "query":
-            # Пользователь вводит поисковый запрос
             if not text or text.startswith("/"):
                 send_telegram(chat_id, "📝 Пожалуйста, введите поисковый запрос. Или /cancel для отмены.")
                 return
-            set_pending_task(chat_id, "interval", query=text)
-            send_telegram(chat_id,
-                          "📝 Запрос сохранён. Теперь введите интервал проверки (например, 5 minutes, 1 hour, daily).\nДля отмены – /cancel")
-            return
+            interval = extract_interval_from_text(text)
+            if interval is not None and interval >= 5:
+                # Нашли интервал, предлагаем подтверждение
+                set_pending_task(chat_id, "confirm_interval", query=text, interval=interval)
+                keyboard = {
+                    "inline_keyboard": [
+                        [{"text": "✅ Да", "callback_data": "confirm_interval_yes"}],
+                        [{"text": "❌ Нет, ввести свой", "callback_data": "confirm_interval_no"}]
+                    ]
+                }
+                send_telegram(chat_id,
+                              f"Похоже, вы указали интервал: {interval} мин. Верно?",
+                              parse_mode="HTML", reply_markup=keyboard)
+                return
+            else:
+                set_pending_task(chat_id, "interval", query=text)
+                send_telegram(chat_id,
+                              "📝 Запрос сохранён. Теперь введите интервал проверки (например, 5 minutes, 1 hour, daily).\nДля отмены – /cancel")
+                return
         elif step == "interval":
             query = pending.get("query", "")
             if not query:
@@ -495,6 +509,28 @@ def webhook():
                           "📝 Пожалуйста, напишите ваше сообщение (предложение, проблему, отзыв).\nДля отмены – /cancel")
         elif data_cb == "tasks":
             send_tasks_inline(chat_id)
+        elif data_cb == "confirm_interval_yes":
+            pending = get_pending_task(chat_id)
+            if pending and pending.get("step") == "confirm_interval":
+                query = pending.get("query")
+                interval = pending.get("interval")
+                delete_pending_task(chat_id)
+                if query and interval:
+                    fake_msg = {
+                        "chat": {"id": chat_id},
+                        "from": callback.get("from", {})
+                    }
+                    create_task_and_check(chat_id, query, interval, fake_msg)
+                else:
+                    send_telegram(chat_id, "Ошибка: не удалось создать задачу.")
+            else:
+                send_telegram(chat_id, "Действие устарело.")
+        elif data_cb == "confirm_interval_no":
+            pending = get_pending_task(chat_id)
+            if pending and pending.get("step") == "confirm_interval":
+                query = pending.get("query")
+                set_pending_task(chat_id, "interval", query=query)
+                send_telegram(chat_id, "Введите интервал проверки (например, 5 minutes, 1 hour, daily).")
         elif data_cb.startswith("task_"):
             task_id = data_cb.split("_", 1)[1]
             send_task_actions(chat_id, task_id)

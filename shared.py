@@ -1,6 +1,8 @@
 import json
 import os
 import datetime
+import re
+
 import redis
 import requests
 import logging
@@ -307,12 +309,39 @@ def get_donation_message():
         )
     return f"\n\n❤️ <b>Поддержите проект!</b>\n{donation_text}"
 
-def set_pending_task(chat_id, step, query=None):
-    """Сохраняет состояние создания задачи: step='query' или 'interval', query - текст запроса."""
+def set_pending_task(chat_id, step, query=None, interval=None):
     data = {"step": step}
     if query:
         data["query"] = query
+    if interval is not None:
+        data["interval"] = interval
     r.setex(f"{PENDING_KEY}{chat_id}", 600, json.dumps(data))
+
+def extract_interval_from_text(text):
+    """Извлекает интервал в минутах из фраз 'через 5 минут', 'каждые 10 минут', 'каждый час'."""
+    text_lower = text.lower()
+    units_minutes = {'минут', 'минуту', 'минуты', 'мин'}
+    units_hours = {'час', 'часа', 'часов'}
+    units_days = {'день', 'дня', 'дней', 'сутки', 'суток'}
+
+    match = re.search(r'(?:через|каждые|каждый)\s+(\d+)\s+([а-я]+)', text_lower)
+    if match:
+        num = int(match.group(1))
+        unit = match.group(2)
+        if unit in units_minutes:
+            return num
+        elif unit in units_hours:
+            return num * 60
+        elif unit in units_days:
+            return num * 1440
+
+    # Особые случаи без числа
+    if 'каждый час' in text_lower:
+        return 60
+    if 'каждые сутки' in text_lower or 'каждый день' in text_lower:
+        return 1440
+
+    return None
 
 def get_pending_task(chat_id):
     """Возвращает словарь с состоянием или None."""
