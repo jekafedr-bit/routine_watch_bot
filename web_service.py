@@ -354,6 +354,67 @@ def send_main_menu(chat_id):
     }
     send_telegram(chat_id, "🏠 <b>Главное меню</b>\nВыберите действие:", parse_mode="HTML", reply_markup=keyboard)
 
+def send_tasks_inline(chat_id):
+    """Отправляет список задач пользователя в виде inline-кнопок."""
+    ids = get_user_task_ids(chat_id)
+    if not ids:
+        send_telegram(chat_id, "У вас нет задач.")
+        return
+
+    keyboard = {"inline_keyboard": []}
+    for tid in sorted(ids, key=lambda x: int(x)):
+        info = get_task_info(tid)
+        if not info:
+            continue
+        paused = "⏸" if info.get("paused") == "1" else "▶"
+        q = info.get("query", "")[:30]
+        interval = info.get("interval", "?")
+        button_text = f"{paused} #{tid} {q}... ({interval} мин)"
+        keyboard["inline_keyboard"].append(
+            [{"text": button_text, "callback_data": f"task_{tid}"}]
+        )
+
+    keyboard["inline_keyboard"].append(
+        [{"text": "🏠 Главное меню", "callback_data": "menu"}]
+    )
+
+    send_telegram(chat_id, "📋 <b>Ваши задачи:</b>\nВыберите задачу:", parse_mode="HTML", reply_markup=keyboard)
+
+
+def send_task_actions(chat_id, task_id):
+    """Показывает информацию о задаче и кнопки действий."""
+    info = get_task_info(task_id)
+    if not info:
+        send_telegram(chat_id, "Задача не найдена.")
+        return
+
+    paused = info.get("paused") == "1"
+    status = "⏸ на паузе" if paused else "▶ активна"
+    text = (
+        f"<b>Задача #{task_id}</b>\n"
+        f"Запрос: {info['query']}\n"
+        f"Интервал: {info['interval']} мин\n"
+        f"Статус: {status}"
+    )
+
+    keyboard = {"inline_keyboard": []}
+    if paused:
+        keyboard["inline_keyboard"].append(
+            [{"text": "▶ Возобновить", "callback_data": f"resume_{task_id}"}]
+        )
+    else:
+        keyboard["inline_keyboard"].append(
+            [{"text": "⏸ Пауза", "callback_data": f"pause_{task_id}"}]
+        )
+    keyboard["inline_keyboard"].append(
+        [{"text": "🗑 Удалить", "callback_data": f"delete_{task_id}"}]
+    )
+    keyboard["inline_keyboard"].append(
+        [{"text": "🔙 Назад к списку", "callback_data": "tasks"}]
+    )
+
+    send_telegram(chat_id, text, parse_mode="HTML", reply_markup=keyboard)
+
 # ---------- Вебхук ----------
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -361,34 +422,50 @@ def webhook():
     if not data:
         return "ok"
 
-    # Обработка нажатий на inline-кнопки
     if "callback_query" in data:
         callback = data["callback_query"]
         chat_id = callback["message"]["chat"]["id"]
         data_cb = callback.get("data", "")
         # Отвечаем на callback
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={"callback_query_id": callback["id"]})
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery",
+            json={"callback_query_id": callback["id"]}
+        )
+
         if data_cb == "menu":
             send_main_menu(chat_id)
-        elif data_cb == "new_task":
-            set_pending_task(chat_id, "query")
-            send_telegram(chat_id, "📝 Введите поисковый запрос...", reply_markup=None)
         elif data_cb == "tasks":
-            ids = get_user_task_ids(chat_id)  # только задачи этого пользователя
-            if not ids:
-                send_telegram(chat_id, "У вас нет задач.")
+            send_tasks_inline(chat_id)
+        elif data_cb.startswith("task_"):
+            task_id = data_cb.split("_", 1)[1]
+            send_task_actions(chat_id, task_id)
+        elif data_cb.startswith("pause_"):
+            task_id = data_cb.split("_", 1)[1]
+            info = get_task_info(task_id)
+            if info and info.get("chat_id") == str(chat_id):
+                set_task_paused(task_id, True)
+                send_telegram(chat_id, f"⏸ Задача #{task_id} поставлена на паузу.")
+                send_task_actions(chat_id, task_id)  # обновлённое меню
             else:
-                lines = ["<b>📋 Ваши задачи:</b>"]
-                for tid in sorted(ids, key=lambda x: int(x)):
-                    info = get_task_info(tid)
-                    if not info:
-                        continue
-                    paused = "⏸" if info.get("paused") == "1" else "▶"
-                    q = info.get("query", "")[:50]
-                    interval = info.get("interval", "?")
-                    lines.append(f"{paused} <b>#{tid}</b> {q}… ({interval} мин)")
-                send_telegram(chat_id, "\n".join(lines), parse_mode="HTML")
-        # ... и другие кнопки
+                send_telegram(chat_id, "Задача не найдена или не ваша.")
+        elif data_cb.startswith("resume_"):
+            task_id = data_cb.split("_", 1)[1]
+            info = get_task_info(task_id)
+            if info and info.get("chat_id") == str(chat_id):
+                set_task_paused(task_id, False)
+                send_telegram(chat_id, f"▶ Задача #{task_id} возобновлена.")
+                send_task_actions(chat_id, task_id)
+            else:
+                send_telegram(chat_id, "Задача не найдена или не ваша.")
+        elif data_cb.startswith("delete_"):
+            task_id = data_cb.split("_", 1)[1]
+            info = get_task_info(task_id)
+            if info and info.get("chat_id") == str(chat_id):
+                delete_task(task_id, chat_id)
+                send_telegram(chat_id, f"🗑 Задача #{task_id} удалена.")
+                send_tasks_inline(chat_id)  # обновлённый список
+            else:
+                send_telegram(chat_id, "Задача не найдена или не ваша.")
         return "ok"
 
     # Обычное сообщение
