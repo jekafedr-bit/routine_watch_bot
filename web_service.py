@@ -13,6 +13,7 @@ from shared import (
     set_pending_task, get_pending_task, delete_pending_task,
     extract_interval_from_text, parse_duration,
     migrate_legacy_tasks,
+    delete_previous_task_list_msg, track_task_list_msg,
 )
 from user_management import (
     is_allowed, notify_admin_unauthorized,
@@ -108,6 +109,7 @@ def handle_message(msg):
     if pending:
         if text.startswith("/cancel"):
             delete_pending_task(chat_id)
+            delete_previous_task_list_msg(chat_id)
             send_telegram(chat_id, "❌ Действие отменено.")
             return
         step = pending.get("step")
@@ -338,8 +340,10 @@ def webhook():
         elif data_cb == "tasks_filter_paused":
             send_tasks_inline(chat_id, filter_state="paused")
         elif data_cb == "tasks_search":
+            delete_previous_task_list_msg(chat_id)
             set_pending_task(chat_id, "task_search")
-            send_telegram(chat_id, "📝 Введите текст для поиска среди ваших задач.\nДля отмены – /cancel")
+            msg_id = send_telegram(chat_id, "📝 Введите текст для поиска среди ваших задач.\nДля отмены – /cancel")
+            track_task_list_msg(chat_id, msg_id)
         elif data_cb == "tasks_search_clear":
             send_tasks_inline(chat_id, search="")
         elif data_cb == "confirm_interval_yes":

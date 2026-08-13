@@ -9,6 +9,7 @@ from shared import (
     update_last_run, check_deepseek,
     now_msk, format_msk, set_pending_task,
     get_task_list_state, set_task_list_state,
+    delete_previous_task_list_msg, track_task_list_msg,
 )
 
 logger = logging.getLogger(__name__)
@@ -184,6 +185,7 @@ def send_tasks_inline(chat_id, page=0, filter_state=None, search=None):
 
     ids = get_user_task_ids(chat_id)
     if not ids:
+        delete_previous_task_list_msg(chat_id)
         send_telegram(chat_id, "У вас нет задач.")
         return
 
@@ -279,12 +281,14 @@ def send_tasks_inline(chat_id, page=0, filter_state=None, search=None):
         if search:
             title += f" (поиск: {search})"
 
-    send_telegram(
+    delete_previous_task_list_msg(chat_id)
+    msg_id = send_telegram(
         chat_id,
         f"{title}\nСтраница {page+1}/{total_pages}.",
         parse_mode="HTML",
         reply_markup=keyboard
     )
+    track_task_list_msg(chat_id, msg_id)
 
 
 def send_task_actions(chat_id, task_id):

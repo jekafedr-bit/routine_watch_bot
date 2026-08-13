@@ -39,6 +39,7 @@ TASK_ID_COUNTER = "task_id_counter"
 USER_TASKS_PREFIX = "user_tasks:"      # множество task_id для каждого пользователя
 PENDING_KEY = "pending_task:"
 TASK_LIST_STATE_PREFIX = "task_list_state:"
+TASK_LIST_MSG_PREFIX = "task_list_msg:"
 
 from datetime import timezone, timedelta
 
@@ -61,6 +62,7 @@ def format_msk(iso_str):
 
 # ---------- Telegram ----------
 def send_telegram(chat_id, text, parse_mode="HTML", reply_markup=None):
+    """Отправляет сообщение и возвращает message_id (или None при ошибке)."""
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -68,8 +70,23 @@ def send_telegram(chat_id, text, parse_mode="HTML", reply_markup=None):
         "parse_mode": parse_mode
     }
     if reply_markup:
-        payload["reply_markup"] = json.dumps(reply_markup)  # нужно будет import json
-    requests.post(url, json=payload)
+        payload["reply_markup"] = json.dumps(reply_markup)
+    try:
+        resp = requests.post(url, json=payload)
+        data = resp.json()
+        return data.get("result", {}).get("message_id")
+    except Exception:
+        return None
+
+def delete_message(chat_id, message_id):
+    """Удаляет сообщение в чате."""
+    if not message_id:
+        return
+    url = f"https://api.telegram.org/bot{TOKEN}/deleteMessage"
+    try:
+        requests.post(url, json={"chat_id": chat_id, "message_id": message_id})
+    except Exception:
+        pass
 
 # ---------- Управление задачами ----------
 def get_next_task_id():
@@ -366,3 +383,23 @@ def get_task_list_state(chat_id):
     if raw:
         return json.loads(raw.decode())
     return {"filter": "all", "search": ""}
+
+# ---------- Отслеживание сообщения со списком задач (для удаления предыдущего) ----------
+def track_task_list_msg(chat_id, message_id):
+    """Сохраняет message_id последнего сообщения со списком задач."""
+    if message_id:
+        r.set(f"{TASK_LIST_MSG_PREFIX}{chat_id}", message_id)
+
+def get_task_list_msg(chat_id):
+    """Возвращает message_id последнего сообщения со списком задач или None."""
+    raw = r.get(f"{TASK_LIST_MSG_PREFIX}{chat_id}")
+    if raw:
+        return int(raw)
+    return None
+
+def delete_previous_task_list_msg(chat_id):
+    """Удаляет предыдущее сообщение со списком задач (если было) и очищает отслеживание."""
+    message_id = get_task_list_msg(chat_id)
+    if message_id:
+        delete_message(chat_id, message_id)
+    r.delete(f"{TASK_LIST_MSG_PREFIX}{chat_id}")
