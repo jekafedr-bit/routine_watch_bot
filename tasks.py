@@ -206,7 +206,7 @@ def send_tasks_inline(chat_id, page=0, filter_state=None, search=None):
     # Сортируем от новых к старым (по убыванию ID)
     filtered.sort(key=lambda x: int(x[0]), reverse=True)
 
-    page_size = 10
+    page_size = 5
     total_pages = max(1, (len(filtered) + page_size - 1) // page_size)
 
     # Корректируем страницу, если вышла за границы
