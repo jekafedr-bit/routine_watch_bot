@@ -419,15 +419,32 @@ def send_main_menu(chat_id):
     }
     send_telegram(chat_id, "🏠 <b>Главное меню</b>\nВыберите действие:", parse_mode="HTML", reply_markup=keyboard)
 
-def send_tasks_inline(chat_id):
-    """Отправляет список задач пользователя в виде inline-кнопок."""
+def send_tasks_inline(chat_id, page=0):
+    """Отправляет список задач пользователя с пагинацией (10 на страницу)."""
     ids = get_user_task_ids(chat_id)
     if not ids:
         send_telegram(chat_id, "У вас нет задач.")
         return
 
+    # Сортируем от новых к старым (по убыванию ID)
+    sorted_ids = sorted(ids, key=lambda x: int(x), reverse=True)
+
+    page_size = 10
+    total_pages = (len(sorted_ids) + page_size - 1) // page_size
+
+    # Корректируем страницу, если вышла за границы
+    if page < 0:
+        page = 0
+    elif page >= total_pages:
+        page = total_pages - 1
+
+    start = page * page_size
+    end = start + page_size
+    page_ids = sorted_ids[start:end]
+
     keyboard = {"inline_keyboard": []}
-    for tid in sorted(ids, key=lambda x: int(x)):
+
+    for tid in page_ids:
         info = get_task_info(tid)
         if not info:
             continue
@@ -439,11 +456,26 @@ def send_tasks_inline(chat_id):
             [{"text": button_text, "callback_data": f"task_{tid}"}]
         )
 
+    # Навигационные кнопки
+    nav_row = []
+    if page > 0:
+        nav_row.append({"text": "⬅️ Назад", "callback_data": f"tasks_page_{page-1}"})
+    if page < total_pages - 1:
+        nav_row.append({"text": "➡️ Вперёд", "callback_data": f"tasks_page_{page+1}"})
+    if nav_row:
+        keyboard["inline_keyboard"].append(nav_row)
+
+    # Кнопка главного меню
     keyboard["inline_keyboard"].append(
         [{"text": "🏠 Главное меню", "callback_data": "menu"}]
     )
 
-    send_telegram(chat_id, "📋 <b>Ваши задачи:</b>\nВыберите задачу:", parse_mode="HTML", reply_markup=keyboard)
+    send_telegram(
+        chat_id,
+        f"📋 <b>Ваши задачи</b> (страница {page+1}/{total_pages})\nВыберите задачу:",
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
 
 
 def send_task_actions(chat_id, task_id):
@@ -509,6 +541,9 @@ def webhook():
                           "📝 Пожалуйста, напишите ваше сообщение (предложение, проблему, отзыв).\nДля отмены – /cancel")
         elif data_cb == "tasks":
             send_tasks_inline(chat_id)
+        elif data_cb.startswith("tasks_page_"):
+            page = int(data_cb.split("_")[-1])
+            send_tasks_inline(chat_id, page)
         elif data_cb == "confirm_interval_yes":
             pending = get_pending_task(chat_id)
             if pending and pending.get("step") == "confirm_interval":
