@@ -341,13 +341,47 @@ def handle_message(msg):
                 logger.warning(f"Failed to notify user {uid}: {e}")
         send_telegram(chat_id, f"✅ Уведомление отправлено {notified} пользователям.")
 
+def send_main_menu(chat_id):
+    keyboard = {
+        "inline_keyboard": [
+            [{"text": "➕ Создать задачу", "callback_data": "new_task"}],
+            [{"text": "📋 Мои задачи", "callback_data": "tasks"}],
+            [{"text": "ℹ️ Информация о задаче", "callback_data": "task_info"}],
+            [{"text": "⏸ Пауза задачи", "callback_data": "pause_task"}],
+            [{"text": "▶️ Возобновить задачу", "callback_data": "resume_task"}],
+            [{"text": "🗑 Удалить задачу", "callback_data": "delete_task"}],
+        ]
+    }
+    send_telegram(chat_id, "🏠 <b>Главное меню</b>\nВыберите действие:", parse_mode="HTML", reply_markup=keyboard)
+
 # ---------- Вебхук ----------
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
-    if not data or "message" not in data:
+    if not data:
         return "ok"
-    handle_message(data["message"])
+
+    # Обработка нажатий на inline-кнопки
+    if "callback_query" in data:
+        callback = data["callback_query"]
+        chat_id = callback["message"]["chat"]["id"]
+        data_cb = callback.get("data", "")
+        # Отвечаем на callback
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={"callback_query_id": callback["id"]})
+        if data_cb == "menu":
+            send_main_menu(chat_id)
+        elif data_cb == "new_task":
+            set_pending_task(chat_id, "query")
+            send_telegram(chat_id, "📝 Введите поисковый запрос...", reply_markup=None)
+        elif data_cb == "tasks":
+            # Можно вызвать обработчик /tasks, но проще отправить команду
+            send_telegram(chat_id, "Используйте команду /tasks или кнопку.", reply_markup=None)
+        # ... и другие кнопки
+        return "ok"
+
+    # Обычное сообщение
+    if "message" in data:
+        handle_message(data["message"])
     return "ok"
 
 @app.route("/", methods=["GET"])

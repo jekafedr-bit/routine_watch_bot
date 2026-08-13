@@ -261,7 +261,7 @@ def build_promo_block(query):
     """
     Возвращает (текст_рекламы, донат_текст, inline_keyboard).
     Если есть партнёрская программа — текст содержит название, а ссылка уходит в кнопку.
-    Если партнёрки нет — возвращается только донат-текст.
+    Если партнёрки нет — возвращается донат-текст и кнопка меню.
     """
     try:
         partner = fetch_admitad_link(query)
@@ -271,18 +271,30 @@ def build_promo_block(query):
             promo_text = f"\n\n💡 <b>По вашему запросу</b> «{query_preview}» <b>рекомендуем:</b> {partner_name}"
             inline_keyboard = {
                 "inline_keyboard": [
-                    [{"text": f"Перейти на {partner_name}", "url": partner_url}]
+                    [{"text": f"Перейти на {partner_name}", "url": partner_url}],
+                    [{"text": "🏠 Главное меню", "callback_data": "menu"}]
                 ]
             }
             return promo_text, "", inline_keyboard
         else:
             # Ленивый импорт, чтобы избежать циклической зависимости
             from shared import get_donation_message
-            return "", get_donation_message(), None
+            # Если партнёрки нет — только кнопка меню
+            inline_keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🏠 Главное меню", "callback_data": "menu"}]
+                ]
+            }
+            return "", get_donation_message(), inline_keyboard
     except Exception as e:
         logger.warning(f"Affiliate error in build_promo_block: {e}")
         try:
             from shared import get_donation_message
-            return "", get_donation_message(), None
+            inline_keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🏠 Главное меню", "callback_data": "menu"}]
+                ]
+            }
+            return "", get_donation_message(), inline_keyboard
         except:
             return "", "", None
